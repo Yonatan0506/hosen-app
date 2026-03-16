@@ -1244,15 +1244,19 @@ function updateDbStatus(connected, detail) {
 async function initSupabase() {
   try {
     updateDbStatus(false, 'מתחבר...');
-    // Try to read from the table — if it doesn't exist we'll get an error
-    await sbFetch('/hosen_groups?limit=1');
+    const result = await sbFetch('/hosen_groups?limit=1');
+    console.log('Supabase connected, result:', result);
     updateDbStatus(true);
     await syncFromSupabase();
   } catch(e) {
-    // Table likely doesn't exist — try to create it via RPC
-    // We'll use the SQL editor approach via the REST API
-    console.warn('Table may not exist, attempting creation...', e.message);
-    await createSupabaseTable();
+    console.error('Supabase init error:', e.message);
+    // If table doesn't exist (42P01 error) try to show setup instructions
+    if (e.message.includes('42P01') || e.message.includes('does not exist')) {
+      await createSupabaseTable();
+    } else {
+      // Other error — show it directly
+      updateDbStatus(false, 'שגיאה: ' + e.message.substring(0, 40));
+    }
   }
 }
 
@@ -1386,8 +1390,12 @@ function saveData(group) {
 }
 
 loadData();
-// Auto-connect to Supabase on load
-initSupabase().catch(console.error);
+// Auto-connect to Supabase after DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => initSupabase().catch(console.error));
+} else {
+  initSupabase().catch(console.error);
+}
 
 // ===== NOTIFICATIONS =====
 function showNotif(msg, type = 'success', duration = 4000) {
