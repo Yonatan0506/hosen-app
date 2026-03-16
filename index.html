@@ -1196,7 +1196,7 @@
   </div>
 </div>
 
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@azure/msal-browser@3.10.0/dist/index.umd.min.js" crossorigin="anonymous"></script>
 <script>
 // ===== SHAREPOINT CONFIG =====
 const SP_CONFIG = {
@@ -1223,7 +1223,7 @@ async function initMsal() {
     },
     cache: { cacheLocation: 'sessionStorage' }
   };
-  msalInstance = new msal.PublicClientApplication(msalConfig);
+  msalInstance = new msalBrowser.PublicClientApplication(msalConfig);
   await msalInstance.initialize();
 }
 
