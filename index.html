@@ -1196,47 +1196,51 @@
   </div>
 </div>
 
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" crossorigin="anonymous"></script>
 <script>
 // ===== SHAREPOINT CONFIG =====
 const SP_CONFIG = {
   clientId: '6e7d433e-cd65-4220-b9fe-a48084f8bab3',
   tenantId: 'd54891a9-014e-4aa7-837f-079587c8ee82',
   siteUrl: 'https://matnasimc.sharepoint.com',
-  sitePath: '/sites/hosen4',  // יעודכן לאחר בדיקה
   listName: 'HosenGroups'
 };
 
-const msalConfig = {
-  auth: {
-    clientId: SP_CONFIG.clientId,
-    authority: `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
-    redirectUri: 'https://yonatan0506.github.io/hosen-app/'
-  },
-  cache: { cacheLocation: 'sessionStorage' }
-};
-
-const msalInstance = new msal.PublicClientApplication(msalConfig);
+let msalInstance = null;
 const scopes = ['https://graph.microsoft.com/Sites.ReadWrite.All', 'https://graph.microsoft.com/User.Read'];
-
 let spToken = null;
 let spSiteId = null;
 let spListId = null;
 let currentAccount = null;
 
+async function initMsal() {
+  if (msalInstance) return;
+  const msalConfig = {
+    auth: {
+      clientId: SP_CONFIG.clientId,
+      authority: `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
+      redirectUri: 'https://yonatan0506.github.io/hosen-app/'
+    },
+    cache: { cacheLocation: 'sessionStorage' }
+  };
+  msalInstance = new msal.PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
+}
+
 // ===== SHAREPOINT AUTH =====
 async function spLogin() {
   try {
+    updateSPStatus(false, null, 'מתחבר...');
+    await initMsal();
     const resp = await msalInstance.loginPopup({ scopes });
     currentAccount = resp.account;
     spToken = resp.accessToken;
     updateSPStatus(true, currentAccount.name);
     await initSharePoint();
-    return true;
   } catch(e) {
     console.error('Login failed:', e);
-    updateSPStatus(false);
-    return false;
+    updateSPStatus(false, null, 'שגיאת התחברות');
+    showNotif('שגיאה: ' + e.message, 'danger');
   }
 }
 
@@ -1244,17 +1248,10 @@ async function getToken() {
   if (!currentAccount) return null;
   try {
     const resp = await msalInstance.acquireTokenSilent({ scopes, account: currentAccount });
-    spToken = resp.accessToken;
-    return spToken;
+    return resp.accessToken;
   } catch {
-    try {
-      const resp = await msalInstance.acquireTokenPopup({ scopes });
-      spToken = resp.accessToken;
-      return spToken;
-    } catch(e) {
-      console.error('Token error:', e);
-      return null;
-    }
+    const resp = await msalInstance.acquireTokenPopup({ scopes });
+    return resp.accessToken;
   }
 }
 
@@ -1267,24 +1264,24 @@ async function graphCall(url, method = 'GET', body = null) {
   };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(`https://graph.microsoft.com/v1.0${url}`, opts);
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Graph error ${resp.status}: ${err}`);
-  }
+  if (!resp.ok) throw new Error(`Graph error ${resp.status}`);
   if (resp.status === 204) return null;
   return resp.json();
 }
 
-// ===== INIT SHAREPOINT SITE & LIST =====
 async function initSharePoint() {
   try {
-    updateSPStatus(true, currentAccount?.name, 'מחבר לאתר...');
-
-    // Get site ID
-    const siteResp = await graphCall(`/sites/matnasimc.sharepoint.com:/sites/hosen4`);
+    updateSPStatus(true, currentAccount?.name, 'מחפש אתר...');
+    // Try to find the SharePoint site
+    let siteResp;
+    try {
+      siteResp = await graphCall(`/sites/matnasimc.sharepoint.com:/sites/hosen4`);
+    } catch {
+      siteResp = await graphCall(`/sites/matnasimc.sharepoint.com`);
+    }
     spSiteId = siteResp.id;
 
-    // Check if list exists, create if not
+    // Get or create list
     try {
       const lists = await graphCall(`/sites/${spSiteId}/lists?$filter=displayName eq '${SP_CONFIG.listName}'`);
       if (lists.value.length > 0) {
@@ -1297,102 +1294,58 @@ async function initSharePoint() {
     }
 
     updateSPStatus(true, currentAccount?.name, 'מחובר ✓');
-    showNotif('✅ מחובר ל-SharePoint בהצלחה!', 'success');
-
-    // Sync data from SharePoint
+    showNotif('✅ מחובר ל-SharePoint!', 'success');
     await syncFromSharePoint();
-
   } catch(e) {
     console.error('SP init error:', e);
-    // Try root site
-    try {
-      const siteResp = await graphCall(`/sites/matnasimc.sharepoint.com`);
-      spSiteId = siteResp.id;
-      await createSharePointList();
-      updateSPStatus(true, currentAccount?.name, 'מחובר לאתר ראשי ✓');
-      showNotif('✅ מחובר ל-SharePoint (אתר ראשי)', 'success');
-    } catch(e2) {
-      updateSPStatus(false, null, 'שגיאת חיבור');
-      showNotif('⚠️ שגיאה בחיבור לSharePoint: ' + e2.message, 'danger', 6000);
-    }
+    updateSPStatus(false, null, 'שגיאת חיבור');
+    showNotif('שגיאה: ' + e.message, 'danger', 6000);
   }
 }
 
 async function createSharePointList() {
-  const listDef = {
+  const created = await graphCall(`/sites/${spSiteId}/lists`, 'POST', {
     displayName: SP_CONFIG.listName,
-    columns: [
-      { name: 'GroupData', text: {} },
-      { name: 'GroupId', text: {} },
-      { name: 'Status', text: {} },
-      { name: 'CreatedAt', dateTime: {} }
-    ],
+    columns: [{ name: 'GroupId', text: {} }, { name: 'GroupData', text: {} }, { name: 'Status', text: {} }],
     list: { template: 'genericList' }
-  };
-  const created = await graphCall(`/sites/${spSiteId}/lists`, 'POST', listDef);
+  });
   spListId = created.id;
 }
 
-// ===== SYNC: LOCAL → SHAREPOINT =====
 async function saveToSharePoint(group) {
   if (!spSiteId || !spListId) return;
   try {
-    const item = {
-      fields: {
-        Title: group.name,
-        GroupId: String(group.id),
-        GroupData: JSON.stringify(group),
-        Status: group.status,
-        CreatedAt: group.createdAt
-      }
-    };
-
-    // Check if exists
-    const existing = await graphCall(
-      `/sites/${spSiteId}/lists/${spListId}/items?$filter=fields/GroupId eq '${group.id}'&$expand=fields`
-    );
-
+    const existing = await graphCall(`/sites/${spSiteId}/lists/${spListId}/items?$filter=fields/GroupId eq '${group.id}'&$expand=fields`);
     if (existing.value.length > 0) {
-      // Update
-      await graphCall(
-        `/sites/${spSiteId}/lists/${spListId}/items/${existing.value[0].id}/fields`,
-        'PATCH',
-        { GroupData: JSON.stringify(group), Status: group.status }
-      );
+      await graphCall(`/sites/${spSiteId}/lists/${spListId}/items/${existing.value[0].id}/fields`, 'PATCH',
+        { GroupData: JSON.stringify(group), Status: group.status });
     } else {
-      // Create
-      await graphCall(`/sites/${spSiteId}/lists/${spListId}/items`, 'POST', item);
+      await graphCall(`/sites/${spSiteId}/lists/${spListId}/items`, 'POST', {
+        fields: { Title: group.name, GroupId: String(group.id), GroupData: JSON.stringify(group), Status: group.status }
+      });
     }
     showNotif('💾 נשמר ב-SharePoint', 'info', 2000);
   } catch(e) {
     console.error('SP save error:', e);
-    showNotif('⚠️ שגיאה בשמירה לSharePoint', 'warning');
   }
 }
 
 async function syncFromSharePoint() {
   if (!spSiteId || !spListId) return;
   try {
-    const items = await graphCall(
-      `/sites/${spSiteId}/lists/${spListId}/items?$expand=fields&$top=200`
-    );
-    if (items.value.length > 0) {
-      const spGroups = items.value
-        .filter(i => i.fields.GroupData)
-        .map(i => JSON.parse(i.fields.GroupData));
-
-      if (spGroups.length > appData.groups.length) {
-        appData.groups = spGroups;
-        appData.nextId = Math.max(...spGroups.map(g => g.id)) + 1;
-        saveData();
-        renderGroupsList();
-        renderDashboard();
-        showNotif(`📥 סונכרנו ${spGroups.length} קבוצות מ-SharePoint`, 'info');
-      }
+    const items = await graphCall(`/sites/${spSiteId}/lists/${spListId}/items?$expand=fields&$top=200`);
+    const spGroups = items.value.filter(i => i.fields.GroupData).map(i => {
+      try { return JSON.parse(i.fields.GroupData); } catch { return null; }
+    }).filter(Boolean);
+    if (spGroups.length > 0) {
+      appData.groups = spGroups;
+      appData.nextId = Math.max(...spGroups.map(g => g.id)) + 1;
+      saveData();
+      renderGroupsList();
+      renderDashboard();
+      showNotif(`📥 סונכרנו ${spGroups.length} קבוצות`, 'info');
     }
-  } catch(e) {
-    console.error('Sync error:', e);
-  }
+  } catch(e) { console.error('Sync error:', e); }
 }
 
 function updateSPStatus(connected, name, detail) {
@@ -1403,28 +1356,27 @@ function updateSPStatus(connected, name, detail) {
     btn.textContent = '✓ מחובר';
     btn.style.background = 'var(--success)';
     status.textContent = (name || '') + (detail ? ' — ' + detail : '');
-    status.style.color = 'var(--success)';
+    status.style.color = '#7dffb3';
   } else {
     btn.textContent = '🔗 התחבר ל-SharePoint';
-    btn.style.background = 'var(--teal)';
+    btn.style.background = '';
     status.textContent = detail || 'לא מחובר';
-    status.style.color = 'var(--muted)';
+    status.style.color = 'rgba(255,255,255,0.5)';
   }
 }
 
-// Check if already logged in on page load
 async function checkExistingLogin() {
-  await msalInstance.initialize();
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0) {
-    currentAccount = accounts[0];
-    try {
+  try {
+    await initMsal();
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      currentAccount = accounts[0];
       const resp = await msalInstance.acquireTokenSilent({ scopes, account: currentAccount });
       spToken = resp.accessToken;
       updateSPStatus(true, currentAccount.name, 'מתחבר...');
       await initSharePoint();
-    } catch {}
-  }
+    }
+  } catch(e) { console.log('No existing session'); }
 }
 
 // ===== DATA STORE =====
