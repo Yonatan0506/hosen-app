@@ -1390,12 +1390,8 @@ function saveData(group) {
 }
 
 loadData();
-// Auto-connect to Supabase after DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => initSupabase().catch(console.error));
-} else {
-  initSupabase().catch(console.error);
-}
+// Auto-connect to Supabase — small delay to ensure DOM is ready
+setTimeout(() => initSupabase().catch(console.error), 100);
 
 // ===== NOTIFICATIONS =====
 function showNotif(msg, type = 'success', duration = 4000) {
