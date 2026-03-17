@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת ניהול קבוצות חוסן</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  (function() { emailjs.init({ publicKey: '-rEYZ2Za6ZbQEWZqJ' }); })();
+</script>
 <style>
   :root {
     --teal: #0d7377;
@@ -1495,11 +1499,43 @@ document.getElementById('newGroupForm').addEventListener('submit', function(e) {
   appData.groups.push(group);
   saveData(group);
 
+  // שליחת מייל למנחה
+  sendFacilitatorEmail(group);
+
   document.getElementById('modalEmail').textContent = group.facilitatorEmail;
   document.getElementById('successModal').classList.add('open');
   resetForm();
   renderGroupsList();
 });
+
+// ===== EMAILJS =====
+function sendFacilitatorEmail(group) {
+  const baseUrl = 'https://yonatan0506.github.io/hosen-app/';
+  const dashboardUrl = `${baseUrl}?facilitator=${encodeURIComponent(group.facilitatorEmail)}`;
+  const feedbackUrl = `${baseUrl}?feedback=${group.id}`;
+
+  const templateParams = {
+    facilitator_email: group.facilitatorEmail,
+    facilitator_name: group.facilitatorName,
+    coordinator_name: group.coordinatorName,
+    group_name: group.name,
+    village: group.village,
+    session_count: group.sessionCount,
+    audience: group.audience.join(', '),
+    goal: group.goal,
+    facilitator_dashboard_url: dashboardUrl,
+    feedback_url: feedbackUrl
+  };
+
+  emailjs.send('service_8lgul2g', 'Rt96s9b', templateParams)
+    .then(() => {
+      showNotif(`✅ מייל נשלח ל-${group.facilitatorName}`, 'success', 5000);
+    })
+    .catch((err) => {
+      console.error('EmailJS error:', err);
+      showNotif('⚠️ הקבוצה נפתחה אך שליחת המייל נכשלה', 'warning', 6000);
+    });
+}
 
 function resetForm() {
   document.getElementById('newGroupForm').reset();
