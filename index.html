@@ -1209,14 +1209,15 @@ const SUPABASE_URL = 'https://geachzndjnozwoscdhzq.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlYWNoem5kam5vendvc2NkaHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzMzMDYsImV4cCI6MjA4OTI0OTMwNn0.bapvdkMD2awKm151qFjhzdRj8_JyQnIApswA20_bMcQ';
 
 // ===== SUPABASE API HELPERS =====
-async function sbFetch(path, method = 'GET', body = null) {
+async function sbFetch(path, method = 'GET', body = null, extraHeaders = {}) {
   const opts = {
     method,
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      'Prefer': method === 'POST' ? 'return=representation' : ''
+      'Prefer': method === 'POST' ? 'return=representation' : '',
+      ...extraHeaders
     }
   };
   if (body) opts.body = JSON.stringify(body);
@@ -1336,23 +1337,15 @@ async function retrySupabaseInit() {
 // ===== SAVE TO SUPABASE =====
 async function saveToSupabase(group) {
   try {
+    // UPSERT — מוסיף אם לא קיים, מעדכן אם קיים
     await sbFetch('/hosen_groups', 'POST', {
       id: group.id,
       group_data: group,
       status: group.status,
       updated_at: new Date().toISOString()
-    });
+    }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
   } catch(e) {
-    // Try PATCH (upsert) if insert failed due to conflict
-    try {
-      await sbFetch(`/hosen_groups?id=eq.${group.id}`, 'PATCH', {
-        group_data: group,
-        status: group.status,
-        updated_at: new Date().toISOString()
-      });
-    } catch(e2) {
-      console.error('Supabase save error:', e2);
-    }
+    console.error('Supabase save error:', e);
   }
 }
 
@@ -1395,7 +1388,11 @@ function saveData(group) {
 
 loadData();
 // Auto-connect to Supabase — small delay to ensure DOM is ready
-setTimeout(() => initSupabase().catch(console.error), 100);
+setTimeout(() => {
+  initSupabase().catch(console.error);
+  checkForFeedbackMode();
+  checkFacilitatorMode();
+}, 100);
 
 // ===== NOTIFICATIONS =====
 function showNotif(msg, type = 'success', duration = 4000) {
@@ -1759,6 +1756,26 @@ function submitParticipantFeedback() {
 
 // ===== FACILITATOR LOGIN =====
 let currentFacilitatorGroup = null;
+let isFacilitatorMode = false; // האם המשתמש הנוכחי הוא מנחה
+
+function checkFacilitatorMode() {
+  const params = new URLSearchParams(window.location.search);
+  const facilitatorEmail = params.get('facilitator');
+  if (facilitatorEmail) {
+    isFacilitatorMode = true;
+    // הסתר כפתורי ניווט של רכזת
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      if (btn.textContent.includes('רכזת') || btn.textContent.includes('דאשבורד') || btn.textContent.includes('תשלום')) {
+        btn.style.display = 'none';
+      }
+    });
+    // עבור לדף מנחה
+    showPage('facilitator', document.querySelector('.nav-btn'));
+    // כנס אוטומטית
+    document.getElementById('facilitatorLoginEmail').value = facilitatorEmail;
+    facilitatorLogin();
+  }
+}
 
 function facilitatorLogin() {
   const email = document.getElementById('facilitatorLoginEmail').value.trim();
@@ -1882,6 +1899,10 @@ function submitFacilitatorFeedback() {
   };
   g.status = 'feedback';
   saveData(g);
+
+  // שליחת מייל לרכזת
+  sendCoordinatorEmail(g);
+
   showNotif('✅ משוב נשלח! מייל נשלח לרכזת החוסן', 'success', 5000);
   document.getElementById('facilitatorFeedbackCard').innerHTML = `
     <div style="text-align:center; padding:32px;">
@@ -1892,6 +1913,24 @@ function submitFacilitatorFeedback() {
         לאחר אישורה תקבל הודעה לשלוח חשבונית.
       </p>
     </div>`;
+}
+
+function sendCoordinatorEmail(group) {
+  const coordinatorEmail = 'zahi-hosen@sn.matnasim.co.il';
+  const templateParams = {
+    facilitator_email: coordinatorEmail,
+    facilitator_name: 'רכזת החוסן',
+    coordinator_name: group.facilitatorName,
+    group_name: group.name,
+    village: group.village,
+    session_count: group.sessions.filter(s => s && !s.missed).length + '/' + group.sessionCount,
+    audience: group.audience.join(', '),
+    goal: group.facilitatorFeedback?.goal || '',
+    facilitator_dashboard_url: 'https://yonatan0506.github.io/hosen-app/',
+    feedback_url: `קבוצה ${group.name} סיימה — ממתינה לאישור תשלום`
+  };
+  emailjs.send('service_8lgul2g', 'template_rt96s9b', templateParams)
+    .catch(err => console.error('Coordinator email error:', err));
 }
 
 // ===== DASHBOARD =====
