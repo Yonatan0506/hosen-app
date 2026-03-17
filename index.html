@@ -1527,7 +1527,7 @@ function sendFacilitatorEmail(group) {
     feedback_url: feedbackUrl
   };
 
-  emailjs.send('service_8lgul2g', 'Rt96s9b', templateParams)
+  emailjs.send('service_8lgul2g', 'template_rt96s9b', templateParams)
     .then(() => {
       showNotif(`✅ מייל נשלח ל-${group.facilitatorName}`, 'success', 5000);
     })
