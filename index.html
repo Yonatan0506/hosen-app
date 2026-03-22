@@ -1489,19 +1489,20 @@ async function parsePdfParticipants(file) {
     const idRegex = /\b(\d{9})\b/;
     const phoneRegex = /\b(05\d[-\s]?\d{3}[-\s]?\d{4})\b/;
     const dobRegex = /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/;
-    const hebrewRegex = /[\u05D0-\u05EA][\u05D0-\u05EA\s"']{1,}/g;
+    // שם: עד 4 מילים עבריות רצופות (שם פרטי + שם משפחה בלבד)
+    const hebrewNameRegex = /[\u05D0-\u05EA"']{2,}(?:\s[\u05D0-\u05EA"']{2,}){0,3}/;
 
     const participants = [];
     allRows.forEach(row => {
       const idMatch = row.match(idRegex);
       const phoneMatch = row.match(phoneRegex);
       const dobMatch = row.match(dobRegex);
-      const hebrewMatches = row.match(hebrewRegex);
+      // מחק מספרים לפני חיפוש שם, ולקח את ההתאמה הראשונה בלבד
+      const rowNoNums = row.replace(/\d+/g, ' ');
+      const nameMatch = rowNoNums.match(hebrewNameRegex);
 
       if (idMatch || phoneMatch) {
-        const name = hebrewMatches
-          ? hebrewMatches.map(s => s.trim()).filter(s => s.length > 1).join(' ')
-          : '';
+        const name = nameMatch ? nameMatch[0].trim() : '';
         participants.push({
           name: name || 'לא זוהה',
           id: idMatch ? idMatch[1] : '',
@@ -2065,8 +2066,10 @@ function saveAllAttendance() {
 }
 function renderIntakeDates(group) {
   const container = document.getElementById('intakeDatesContainer');
+  if (!container) return;
   container.innerHTML = '';
-  for (let i = 0; i < group.sessionCount; i++) {
+  const count = parseInt(group.sessionCount) || 0;
+  for (let i = 0; i < count; i++) {
     const savedDate = group.intakeDates && group.intakeDates[i] ? group.intakeDates[i] : '';
     const div = document.createElement('div');
     div.className = 'form-group';
@@ -2080,13 +2083,15 @@ function saveIntake() {
   if (!g) return;
   const duration = document.getElementById('intakeDuration').value;
   const dates = [];
-  for (let i = 0; i < g.sessionCount; i++) {
+  const count = parseInt(g.sessionCount) || 0;
+  for (let i = 0; i < count; i++) {
     const input = document.getElementById('intakeDate_' + i);
     dates.push(input ? input.value : '');
   }
   g.intake = duration;
   g.intakeDates = dates;
   saveData(g);
+  renderAttendanceMatrix(); // רענן את הטבלה עם התאריכים החדשים
   showNotif('✅ אינטייק ותאריכי מפגשים נשמרו', 'success');
 }
 function finishAllSessions() {
