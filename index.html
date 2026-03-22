@@ -957,7 +957,7 @@
         <div id="facilitatorGroupDetailsContent"></div>
       </div>
       <!-- Intake -->
-      <div class="card">
+      <div class="card" id="intakeCard">
         <div class="section-badge">📋 שלב ראשון</div>
         <div class="card-title">
           <div class="card-title-icon">🤝</div>
@@ -983,7 +983,7 @@
         </div>
       </div>
       <!-- Sessions -->
-      <div class="card">
+      <div class="card" id="sessionsCard">
         <div class="section-badge">📅 דיווח מפגשים</div>
         <div class="card-title">
           <div class="card-title-icon">✅</div>
@@ -1485,29 +1485,49 @@ async function parsePdfParticipants(file) {
       });
     }
 
-    // Extract participants from rows
-    const idRegex = /\b(\d{9})\b/;
-    const phoneRegex = /\b(05\d[-\s]?\d{3}[-\s]?\d{4})\b/;
-    const dobRegex = /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/;
-    // שם: עד 4 מילים עבריות רצופות (שם פרטי + שם משפחה בלבד)
+    // === פורמט דו"ח רשומים: תאריך | מספר הרשמה | שם התושב | טלפון | טלפון2 | כתובת ===
+    // שורת נתונים מזוהה ע"י תאריך DD/MM/YYYY + מספר הרשמה 4–5 ספרות + שם עברי + טלפון
+    const rowDateRegex = /\b\d{1,2}\/\d{1,2}\/\d{4}\b/;
+    const phoneRegex = /\b(0\d{1,2}-\d{6,8})\b/g;
+    const regNumRegex = /\b(\d{4,6})\b/;
     const hebrewNameRegex = /[\u05D0-\u05EA"']{2,}(?:\s[\u05D0-\u05EA"']{2,}){0,3}/;
+    // מילות כותרת וסיכום שיש לדלג עליהן
+    const skipWords = ['שם', 'תושב', 'טלפון', 'כתובת', 'הרשמה', 'סה"כ', 'דו"ח', 'רשומים', 'מרכז', 'חוג'];
 
     const participants = [];
     allRows.forEach(row => {
-      const idMatch = row.match(idRegex);
-      const phoneMatch = row.match(phoneRegex);
-      const dobMatch = row.match(dobRegex);
-      // מחק מספרים לפני חיפוש שם, ולקח את ההתאמה הראשונה בלבד
-      const rowNoNums = row.replace(/\d+/g, ' ');
-      const nameMatch = rowNoNums.match(hebrewNameRegex);
+      // שורת נתונים חייבת להכיל תאריך
+      if (!rowDateRegex.test(row)) return;
+      // דלג על כותרות וסיכומים
+      if (skipWords.some(w => row.includes(w))) return;
 
-      if (idMatch || phoneMatch) {
-        const name = nameMatch ? nameMatch[0].trim() : '';
+      // מצא את כל מספרי הטלפון בשורה
+      const phoneMatches = [...row.matchAll(phoneRegex)];
+      const phone = phoneMatches.length > 0 ? phoneMatches[0][1] : '';
+
+      // קח טקסט לפני הטלפון הראשון (שם + מספר הרשמה + תאריך)
+      const phonePos = phone ? row.indexOf(phone) : row.length;
+      const beforePhone = row.substring(0, phonePos);
+
+      // הסר תאריך ומספר הרשמה — מה שנשאר הוא השם
+      const cleaned = beforePhone
+        .replace(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/, '')
+        .replace(/\b\d{4,6}\b/, '')
+        .trim();
+
+      // חלץ שם עברי (עד 4 מילים, ללא ספרות)
+      const nameMatch = cleaned.match(hebrewNameRegex);
+      const name = nameMatch ? nameMatch[0].trim() : '';
+
+      // מספר הרשמה
+      const regMatch = beforePhone.match(regNumRegex);
+      const regNum = regMatch ? regMatch[1] : '';
+
+      if (name && name.length > 2) {
         participants.push({
-          name: name || 'לא זוהה',
-          id: idMatch ? idMatch[1] : '',
-          dob: dobMatch ? dobMatch[1] : '',
-          phone: phoneMatch ? phoneMatch[1] : '',
+          name,
+          id: regNum,   // מספר הרשמה (אין ת"ז בפורמט זה)
+          phone,
           present: []
         });
       }
@@ -1530,18 +1550,18 @@ async function parsePdfParticipants(file) {
       <table>
         <thead>
           <tr>
-            <th>שם</th>
-            <th>ת"ז</th>
-            <th>תאריך לידה</th>
+            <th>#</th>
+            <th>שם התושב</th>
+            <th>מס' הרשמה</th>
             <th>טלפון</th>
           </tr>
         </thead>
         <tbody>
-          ${participants.map(p => `
+          ${participants.map((p, i) => `
             <tr>
+              <td>${i + 1}</td>
               <td>${p.name}</td>
               <td>${p.id || '—'}</td>
-              <td>${p.dob || '—'}</td>
               <td>${p.phone || '—'}</td>
             </tr>
           `).join('')}
@@ -1701,8 +1721,21 @@ function renderGroupsList() {
         </div>
       </div>
       <div class="group-status ${cls}">${label}</div>
+      <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteGroup(${g.id})"
+        title="מחק קבוצה" style="padding:6px 10px; font-size:13px; flex-shrink:0;">🗑️</button>
     </div>`;
   }).join('');
+}
+function deleteGroup(id) {
+  const g = appData.groups.find(x => x.id === id);
+  if (!g) return;
+  if (!confirm(`האם למחוק את הקבוצה "${g.name}"?\n\nפעולה זו בלתי הפיכה.`)) return;
+  appData.groups = appData.groups.filter(x => x.id !== id);
+  localStorage.setItem('hosenApp', JSON.stringify(appData));
+  sbFetch(`/hosen_groups?id=eq.${id}`, 'DELETE').catch(console.error);
+  renderGroupsList();
+  renderDashboard();
+  showNotif(`🗑️ הקבוצה "${g.name}" נמחקה`, 'warning', 4000);
 }
 function openGroupDetail(id) {
   const g = appData.groups.find(x => x.id === id);
@@ -1931,7 +1964,23 @@ function facilitatorLogin() {
   document.getElementById('facilitatorDashboard').style.display = 'block';
   renderFacilitatorGroupDetails(group);
   renderFacilitatorSessions();
-  renderIntakeDates(group);
+  // שחזור סטטוס אינטייק
+  if (group.intake && group.intakeDates && group.intakeDates.some(Boolean)) {
+    showIntakeCompleted(group);
+  } else {
+    renderIntakeDates(group);
+  }
+  // שחזור סטטוס משוב אם כבר הוגש
+  if (group.facilitatorFeedback) {
+    const fbCard = document.getElementById('facilitatorFeedbackCard');
+    fbCard.style.display = 'block';
+    fbCard.innerHTML = `
+      <div style="text-align:center;padding:32px;">
+        <div style="font-size:56px;margin-bottom:16px;">✅</div>
+        <h3 style="font-family:'Frank Ruhl Libre',serif;margin-bottom:12px;">המשוב כבר הוגש</h3>
+        <p style="color:var(--muted);font-size:14px;line-height:1.7;">המשוב נשלח לרכזת בהצלחה. הקבוצה ממתינה לאישור תשלום.</p>
+      </div>`;
+  }
 }
 function renderFacilitatorGroupDetails(g) {
   document.getElementById('facilitatorGroupTitle').textContent = g.name;
@@ -2088,11 +2137,59 @@ function saveIntake() {
     const input = document.getElementById('intakeDate_' + i);
     dates.push(input ? input.value : '');
   }
+  if (!dates.some(Boolean)) { showNotif('⚠️ אנא מלא לפחות תאריך אחד', 'warning'); return; }
   g.intake = duration;
   g.intakeDates = dates;
   saveData(g);
-  renderAttendanceMatrix(); // רענן את הטבלה עם התאריכים החדשים
+  renderAttendanceMatrix();
+  showIntakeCompleted(g);
   showNotif('✅ אינטייק ותאריכי מפגשים נשמרו', 'success');
+}
+// === הצגת אינטייק מכווץ אחרי שמירה ===
+function showIntakeCompleted(g) {
+  const card = document.getElementById('intakeCard');
+  if (!card) return;
+  const filled = (g.intakeDates || []).filter(Boolean);
+  const datesHtml = filled.map((d, i) =>
+    `<span style="background:var(--teal-pale);color:var(--teal);padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">מפגש ${i+1}: ${formatDateHe(d)}</span>`
+  ).join('');
+  card.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+      <div style="width:42px;height:42px;background:#edf7f1;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;color:var(--charcoal);font-size:15px;margin-bottom:4px;">שלב 1 — אינטייק הושלם</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">משך אינטייק: ${g.intake || 'ללא'} | ${filled.length} תאריכים נקבעו</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${datesHtml}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="reopenIntake()">✏️ עריכה</button>
+    </div>`;
+}
+function reopenIntake() {
+  const g = currentFacilitatorGroup;
+  if (!g) return;
+  const card = document.getElementById('intakeCard');
+  card.innerHTML = `
+    <div class="section-badge">📋 שלב ראשון</div>
+    <div class="card-title"><div class="card-title-icon">🤝</div>ביצוע אינטייק</div>
+    <div class="form-grid" style="margin-bottom:16px;">
+      <div class="form-group">
+        <label>משך האינטייק</label>
+        <select id="intakeDuration">
+          <option${g.intake==='ללא'?' selected':''}>ללא</option>
+          <option${g.intake==="30 דק'"?' selected':''}>30 דק'</option>
+          <option${g.intake==="60 דק'"?' selected':''}>60 דק'</option>
+          <option${g.intake==="90 דק'"?' selected':''}>90 דק'</option>
+          <option${g.intake==="120 דק'"?' selected':''}>120 דק'</option>
+        </select>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-weight:600;font-size:14px;color:var(--charcoal);margin-bottom:12px;">📅 תאריכי מפגשים מתוכננים</div>
+    <div id="intakeDatesContainer" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;"></div>
+    <div class="form-actions" style="border:none;padding:0;">
+      <button class="btn btn-primary btn-sm" onclick="saveIntake()">שמירת אינטייק ותאריכים</button>
+    </div>`;
+  renderIntakeDates(g);
 }
 function finishAllSessions() {
   const g = currentFacilitatorGroup;
