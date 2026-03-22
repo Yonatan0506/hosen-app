@@ -695,6 +695,18 @@
     font-weight: 600;
     color: var(--muted);
   }
+  .attendance-matrix { width:100%; border-collapse:collapse; font-size:13px; overflow-x:auto; }
+  .attendance-matrix th { background:var(--teal); color:white; padding:10px 12px; text-align:center; white-space:nowrap; }
+  .attendance-matrix th:first-child { text-align:right; background:var(--charcoal); }
+  .attendance-matrix td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:center; }
+  .attendance-matrix td:first-child { text-align:right; font-weight:500; color:var(--charcoal); }
+  .attendance-matrix tr:nth-child(even) td { background:var(--sand); }
+  .attendance-matrix input[type=checkbox] { width:18px; height:18px; accent-color:var(--teal); cursor:pointer; }
+  .session-col-header { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .missed-badge { background:#fdf0ef; color:var(--danger); border:1px solid #f5c6c3; border-radius:6px; padding:2px 8px; font-size:11px; font-weight:600; }
+  .mark-missed-btn { background:none; border:1px solid rgba(255,255,255,0.4); color:white; border-radius:6px; padding:3px 8px; font-size:11px; cursor:pointer; margin-top:4px; font-family:'Heebo',sans-serif; }
+  .mark-missed-btn:hover { background:rgba(255,255,255,0.15); }
+  .attendance-matrix .missed-col td { background:#fdf0ef !important; opacity:0.6; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -951,18 +963,23 @@
           <div class="card-title-icon">🤝</div>
           ביצוע אינטייק
         </div>
-        <div class="form-group" style="max-width:300px;">
-          <label>משך האינטייק</label>
-          <select id="intakeDuration">
-            <option>ללא</option>
-            <option>30 דק'</option>
-            <option>60 דק'</option>
-            <option>90 דק'</option>
-            <option>120 דק'</option>
-          </select>
+        <div class="form-grid" style="margin-bottom:16px;">
+          <div class="form-group">
+            <label>משך האינטייק</label>
+            <select id="intakeDuration">
+              <option>ללא</option>
+              <option>30 דק'</option>
+              <option>60 דק'</option>
+              <option>90 דק'</option>
+              <option>120 דק'</option>
+            </select>
+          </div>
         </div>
-        <div class="form-actions" style="border:none; padding:0; margin-top:16px;">
-          <button class="btn btn-primary btn-sm" onclick="saveIntake()">שמירה</button>
+        <div class="divider"></div>
+        <div style="font-weight:600; font-size:14px; color:var(--charcoal); margin-bottom:12px;">📅 תאריכי מפגשים מתוכננים</div>
+        <div id="intakeDatesContainer" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;"></div>
+        <div class="form-actions" style="border:none; padding:0;">
+          <button class="btn btn-primary btn-sm" onclick="saveIntake()">שמירת אינטייק ותאריכים</button>
         </div>
       </div>
       <!-- Sessions -->
@@ -972,29 +989,15 @@
           <div class="card-title-icon">✅</div>
           נוכחות לפי מפגש
         </div>
-        <div class="session-tabs" id="sessionTabs"></div>
-        <div id="sessionContent">
-          <div class="form-grid" style="margin-bottom:20px;">
-            <div class="form-group">
-              <label>תאריך המפגש</label>
-              <input type="date" id="sessionDate">
-            </div>
-            <div class="form-group" style="align-self:end;">
-              <button class="btn btn-danger btn-sm" onclick="markSessionMissed()">❌ הפגישה לא התקיימה</button>
-            </div>
-          </div>
-          <div id="attendanceList"></div>
-          <div class="alert alert-warning" id="lowAttendanceAlert" style="display:none;">
-            ⚠️ פחות מ-6 משתתפים — הרכזת תקבל הודעה אוטומטית.
-          </div>
-          <div class="form-actions">
-            <button class="btn btn-primary btn-sm" onclick="saveAttendance()">שמירת נוכחות</button>
-          </div>
-        </div>
-        <div style="margin-top:20px;">
+        <div id="attendanceMatrixContainer"></div>
+        <div style="margin-top:20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="saveAllAttendance()">💾 שמירת נוכחות</button>
           <button class="btn btn-primary" id="finishAllBtn" onclick="finishAllSessions()" style="display:none;">
             🏁 סיום כלל המפגשים — מעבר למשוב
           </button>
+        </div>
+        <div class="alert alert-warning" id="lowAttendanceAlert" style="display:none; margin-top:12px;">
+          ⚠️ פחות מ-6 משתתפים באחד המפגשים — הרכזת תקבל הודעה אוטומטית.
         </div>
       </div>
       <!-- Facilitator Feedback -->
@@ -1008,6 +1011,10 @@
         <div id="facilitatorFeedbackGroupSummary"></div>
         <div class="form-grid single">
           <div class="form-group">
+            <div class="alert alert-info" style="margin-bottom:8px;">
+              <strong>מטרת העל שנקבעה בפתיחה:</strong>
+              <span id="originalGoalRef" style="display:block; margin-top:4px; font-style:italic;"></span>
+            </div>
             <label>כיצד הושגה בפועל מטרת העל שנקבעה?</label>
             <textarea id="fb_goal" placeholder="תאר בקצרה..."></textarea>
           </div>
@@ -1375,6 +1382,12 @@ async function syncFromSupabase() {
         appData.groups = cloudGroups;
         appData.nextId = Math.max(...cloudGroups.map(g => g.id)) + 1;
         localStorage.setItem('hosenApp', JSON.stringify(appData));
+        if (currentFacilitatorGroup) {
+          const updated = cloudGroups.find(g => g.id === currentFacilitatorGroup.id);
+          if (updated) {
+            currentFacilitatorGroup = updated;
+          }
+        }
         renderGroupsList();
         renderDashboard();
         showNotif(`☁️ סונכרנו ${cloudGroups.length} קבוצות מהענן`, 'info', 3000);
@@ -1917,6 +1930,7 @@ function facilitatorLogin() {
   document.getElementById('facilitatorDashboard').style.display = 'block';
   renderFacilitatorGroupDetails(group);
   renderFacilitatorSessions();
+  renderIntakeDates(group);
 }
 function renderFacilitatorGroupDetails(g) {
   document.getElementById('facilitatorGroupTitle').textContent = g.name;
@@ -1936,75 +1950,144 @@ function renderFacilitatorGroupDetails(g) {
 }
 function renderFacilitatorSessions() {
   const g = currentFacilitatorGroup;
-  const tabs = document.getElementById('sessionTabs');
-  tabs.innerHTML = Array.from({length: g.sessionCount}, (_, i) => {
-    const s = g.sessions[i];
-    let cls = '', label = `מפגש ${i+1}`;
-    if (s) {
-      cls = s.missed ? 'missed' : 'completed';
+  renderAttendanceMatrix();
+  // Show finish button if all sessions filled
+  const allFilled = Array.from({length: g.sessionCount}, (_, i) => g.sessions[i]).every(s => s);
+  document.getElementById('finishAllBtn').style.display = allFilled ? 'block' : 'none';
+}
+
+function renderAttendanceMatrix() {
+  const g = currentFacilitatorGroup;
+  const container = document.getElementById('attendanceMatrixContainer');
+  if (!g.participants || g.participants.length === 0) {
+    container.innerHTML = '<div class="alert alert-warning">לא נמצאו משתתפים בקבוצה זו.</div>';
+    return;
+  }
+
+  // Build header row with session columns
+  let headerCols = '<th>שם משתתף</th>';
+  for (let si = 0; si < g.sessionCount; si++) {
+    const s = g.sessions[si];
+    const plannedDate = g.intakeDates && g.intakeDates[si] ? formatDateHe(g.intakeDates[si]) : '';
+    const isMissed = s && s.missed;
+    headerCols += '<th>' +
+      '<div class="session-col-header">' +
+        '<span>מפגש ' + (si+1) + '</span>' +
+        (plannedDate ? '<span style="font-size:11px; font-weight:400; opacity:0.85;">' + plannedDate + '</span>' : '') +
+        (isMissed
+          ? '<span class="missed-badge">לא התקיים</span>'
+          : '<button class="mark-missed-btn" onclick="markSessionMissedMatrix(' + si + ')">❌ לא התקיים</button>') +
+      '</div>' +
+      '</th>';
+  }
+
+  // Build data rows
+  let rows = '';
+  g.participants.forEach((p, pi) => {
+    let cells = '<td>' + p.name + '</td>';
+    for (let si = 0; si < g.sessionCount; si++) {
+      const s = g.sessions[si];
+      const isMissed = s && s.missed;
+      const isChecked = s && !s.missed && s.present && s.present.includes(pi);
+      cells += '<td class="' + (isMissed ? 'missed-col-cell' : '') + '">' +
+        '<input type="checkbox" ' +
+        'id="att_' + si + '_' + pi + '" ' +
+        (isChecked ? 'checked' : '') + ' ' +
+        (isMissed ? 'disabled' : '') + ' ' +
+        'onchange="checkAllAttendance()">' +
+        '</td>';
     }
-    return `<button class="session-tab ${cls}" onclick="selectSession(${i})">${label}</button>`;
-  }).join('');
-  const allDone = g.sessions.length === g.sessionCount;
-  document.getElementById('finishAllBtn').style.display = allDone ? 'block' : 'none';
-  selectSession(0);
-}
-let currentSessionIdx = 0;
-function selectSession(idx) {
-  currentSessionIdx = idx;
-  document.querySelectorAll('.session-tab').forEach((t,i) => {
-    t.classList.toggle('active', i === idx);
+    rows += '<tr>' + cells + '</tr>';
   });
+
+  container.innerHTML = '<div style="overflow-x:auto;"><table class="attendance-matrix"><thead><tr>' + headerCols + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function formatDateHe(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+
+function markSessionMissedMatrix(sessionIdx) {
   const g = currentFacilitatorGroup;
-  const s = g.sessions[idx];
-  document.getElementById('sessionDate').value = s ? s.date : '';
-  const list = document.getElementById('attendanceList');
-  list.innerHTML = g.participants.map((p, pi) => {
-    const checked = s && s.present && s.present.includes(pi);
-    return `<div class="attendee-row">
-      <div class="attendee-name">${p.name}</div>
-      <button class="check-btn ${checked ? 'checked' : ''}" onclick="toggleAttendee(${pi}, this)">✓</button>
-    </div>`;
-  }).join('');
-  checkLowAttendance();
-}
-function toggleAttendee(idx, btn) {
-  btn.classList.toggle('checked');
-  checkLowAttendance();
-}
-function checkLowAttendance() {
-  const checked = document.querySelectorAll('.check-btn.checked').length;
-  document.getElementById('lowAttendanceAlert').style.display = checked < 6 && checked > 0 ? 'block' : 'none';
-}
-function markSessionMissed() {
-  const g = currentFacilitatorGroup;
-  g.sessions[currentSessionIdx] = { missed: true, date: new Date().toISOString().split('T')[0], present: [] };
-  saveData();
-  renderFacilitatorSessions();
-}
-function saveAttendance() {
-  const g = currentFacilitatorGroup;
-  const date = document.getElementById('sessionDate').value;
-  if (!date) { alert('אנא בחר תאריך'); return; }
-  const present = [...document.querySelectorAll('.check-btn')]
-    .map((b, i) => b.classList.contains('checked') ? i : -1)
-    .filter(i => i >= 0);
-  g.sessions[currentSessionIdx] = { date, present, missed: false };
+  if (!confirm('לסמן את מפגש ' + (sessionIdx+1) + ' כ"לא התקיים"?')) return;
+  g.sessions[sessionIdx] = { missed: true, date: new Date().toISOString().split('T')[0], present: [] };
   saveData(g);
-  renderFacilitatorSessions();
-  const alert_ = document.createElement('div');
-  alert_.className = 'alert alert-success';
-  alert_.textContent = '✅ נוכחות נשמרה בהצלחה';
-  document.getElementById('sessionContent').prepend(alert_);
-  setTimeout(() => alert_.remove(), 2500);
+  renderAttendanceMatrix();
+  checkAllAttendance();
+}
+
+function checkAllAttendance() {
+  const g = currentFacilitatorGroup;
+  // Check if any session has fewer than 6 attendees
+  let hasLow = false;
+  for (let si = 0; si < g.sessionCount; si++) {
+    const s = g.sessions[si];
+    if (s && s.missed) continue;
+    if (s && s.present && s.present.length > 0 && s.present.length < 6) { hasLow = true; break; }
+    // Count checkboxes for this session
+    let count = 0;
+    for (let pi = 0; pi < g.participants.length; pi++) {
+      const cb = document.getElementById('att_' + si + '_' + pi);
+      if (cb && cb.checked) count++;
+    }
+    if (count > 0 && count < 6) { hasLow = true; break; }
+  }
+  document.getElementById('lowAttendanceAlert').style.display = hasLow ? 'block' : 'none';
+}
+
+function saveAllAttendance() {
+  const g = currentFacilitatorGroup;
+  for (let si = 0; si < g.sessionCount; si++) {
+    const s = g.sessions[si];
+    if (s && s.missed) continue; // don't overwrite missed
+    const present = [];
+    for (let pi = 0; pi < g.participants.length; pi++) {
+      const cb = document.getElementById('att_' + si + '_' + pi);
+      if (cb && cb.checked) present.push(pi);
+    }
+    // Only save if at least one participant or session already existed
+    const plannedDate = g.intakeDates && g.intakeDates[si] ? g.intakeDates[si] : '';
+    g.sessions[si] = { date: plannedDate, present, missed: false };
+  }
+  saveData(g);
+  // Check finish button
+  const allFilled = Array.from({length: g.sessionCount}, (_, i) => g.sessions[i]).every(s => s);
+  document.getElementById('finishAllBtn').style.display = allFilled ? 'block' : 'none';
+  showNotif('✅ נוכחות נשמרה בהצלחה לכל המפגשים', 'success');
+  // Notify coordinator if any session has low attendance
+  const hasLow = g.sessions.some(s => s && !s.missed && s.present && s.present.length > 0 && s.present.length < 6);
+  if (hasLow) {
+    sendCoordinatorSessionEmail(g, 'low_attendance');
+  }
+}
+function renderIntakeDates(group) {
+  const container = document.getElementById('intakeDatesContainer');
+  container.innerHTML = '';
+  for (let i = 0; i < group.sessionCount; i++) {
+    const savedDate = group.intakeDates && group.intakeDates[i] ? group.intakeDates[i] : '';
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.innerHTML = '<label>מפגש ' + (i+1) + '</label>' +
+      '<input type="date" id="intakeDate_' + i + '" value="' + savedDate + '">';
+    container.appendChild(div);
+  }
 }
 function saveIntake() {
-  const val = document.getElementById('intakeDuration').value;
-  if (currentFacilitatorGroup) {
-    currentFacilitatorGroup.intake = val;
-    saveData();
+  const g = currentFacilitatorGroup;
+  if (!g) return;
+  const duration = document.getElementById('intakeDuration').value;
+  const dates = [];
+  for (let i = 0; i < g.sessionCount; i++) {
+    const input = document.getElementById('intakeDate_' + i);
+    dates.push(input ? input.value : '');
   }
-  alert('האינטייק נשמר: ' + val);
+  g.intake = duration;
+  g.intakeDates = dates;
+  saveData(g);
+  showNotif('✅ אינטייק ותאריכי מפגשים נשמרו', 'success');
 }
 function finishAllSessions() {
   const g = currentFacilitatorGroup;
@@ -2020,6 +2103,9 @@ function finishAllSessions() {
         '</div>' +
       '</div>';
   }
+  // Show original goal as reference above the textarea
+  const goalRef = document.getElementById('originalGoalRef');
+  if (goalRef && g) goalRef.textContent = g.goal || '—';
   document.getElementById('facilitatorFeedbackCard').style.display = 'block';
   document.getElementById('facilitatorFeedbackCard').scrollIntoView({behavior:'smooth'});
 }
@@ -2045,6 +2131,26 @@ function submitFacilitatorFeedback() {
         לאחר אישורה תקבל הודעה לשלוח חשבונית.
       </p>
     </div>`;
+}
+function sendCoordinatorSessionEmail(group, type) {
+  const coordinatorEmail = group.coordinatorEmail || 'zahi-hosen@sn.matnasim.co.il';
+  const sessionsCompleted = group.sessions.filter(s => s && !s.missed).length;
+  const templateParams = {
+    facilitator_email: coordinatorEmail,
+    facilitator_name: 'רכזת החוסן',
+    coordinator_name: group.facilitatorName,
+    group_name: group.name,
+    village: group.village,
+    session_count: sessionsCompleted + '/' + group.sessionCount,
+    audience: group.audience.join(', '),
+    goal: type === 'low_attendance'
+      ? 'שים לב: באחד המפגשים יש פחות מ-6 משתתפים!'
+      : 'עדכון נוכחות: ' + sessionsCompleted + ' מפגשים הושלמו',
+    facilitator_dashboard_url: 'https://yonatan0506.github.io/hosen-app/',
+    feedback_url: 'קבוצה ' + group.name + ' — עדכון נוכחות'
+  };
+  emailjs.send('service_8lgul2g', 'template_rt96s9b', templateParams)
+    .catch(err => console.error('Session email error:', err));
 }
 function sendCoordinatorEmail(group) {
   // Use coordinatorEmail from group data instead of hardcoded address
