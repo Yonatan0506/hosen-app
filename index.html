@@ -1391,6 +1391,10 @@ async function syncFromSupabase() {
         renderGroupsList();
         renderDashboard();
         showNotif(`☁️ סונכרנו ${cloudGroups.length} קבוצות מהענן`, 'info', 3000);
+        // אם מנחה ניסה להיכנס לפני שהנתונים הגיעו — נסה שוב עכשיו
+        if (pendingFacilitatorEmail) {
+          openFacilitatorDashboard(pendingFacilitatorEmail);
+        }
       }
     }
     updateDbStatus(true, `מחובר ✓ (${rows?.length || 0} קבוצות)`);
@@ -1936,29 +1940,42 @@ function submitParticipantFeedback() {
 // ===== FACILITATOR LOGIN =====
 let currentFacilitatorGroup = null;
 let isFacilitatorMode = false;
+let pendingFacilitatorEmail = null; // מחכה לסנכרון Supabase
+
 function checkFacilitatorMode() {
   const params = new URLSearchParams(window.location.search);
   const facilitatorEmail = params.get('facilitator');
-  if (facilitatorEmail) {
-    isFacilitatorMode = true;
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      if (btn.textContent.includes('רכזת') || btn.textContent.includes('דאשבורד') || btn.textContent.includes('תשלום')) {
-        btn.style.display = 'none';
-      }
-    });
-    showPage('facilitator', document.querySelector('.nav-btn'));
-    document.getElementById('facilitatorLoginEmail').value = facilitatorEmail;
-    facilitatorLogin();
+  if (!facilitatorEmail) return;
+  isFacilitatorMode = true;
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    if (btn.textContent.includes('רכזת') || btn.textContent.includes('דאשבורד') || btn.textContent.includes('תשלום')) {
+      btn.style.display = 'none';
+    }
+  });
+  showPage('facilitator', document.querySelector('.nav-btn'));
+  document.getElementById('facilitatorLoginEmail').value = facilitatorEmail;
+  // נסה כניסה — אם הקבוצה לא עדיין ב-localStorage, המתן לסנכרון
+  if (!openFacilitatorDashboard(facilitatorEmail)) {
+    pendingFacilitatorEmail = facilitatorEmail;
+    document.getElementById('facilitatorLogin').innerHTML =
+      '<div class="alert alert-info" style="margin:0;">⏳ מתחבר לנתוני הקבוצה מהענן, אנא המתן...</div>';
   }
 }
+
+// כניסה ידנית (כפתור כניסה)
 function facilitatorLogin() {
   const email = document.getElementById('facilitatorLoginEmail').value.trim();
   if (!email) { alert('אנא הזן מייל'); return; }
-  const group = appData.groups.find(g => g.facilitatorEmail === email);
-  if (!group) {
+  if (!openFacilitatorDashboard(email)) {
     alert('לא נמצאה קבוצה עם מייל זה. אנא בדוק שהרכזת פתחה עבורך קבוצה.');
-    return;
   }
+}
+
+// פתיחת דשבורד מנחה — מחזיר true אם הצליח, false אם הקבוצה לא נמצאה
+function openFacilitatorDashboard(email) {
+  const group = appData.groups.find(g => g.facilitatorEmail === email);
+  if (!group) return false;
+  pendingFacilitatorEmail = null;
   currentFacilitatorGroup = group;
   document.getElementById('facilitatorLogin').style.display = 'none';
   document.getElementById('facilitatorDashboard').style.display = 'block';
@@ -1981,6 +1998,7 @@ function facilitatorLogin() {
         <p style="color:var(--muted);font-size:14px;line-height:1.7;">המשוב נשלח לרכזת בהצלחה. הקבוצה ממתינה לאישור תשלום.</p>
       </div>`;
   }
+  return true;
 }
 function renderFacilitatorGroupDetails(g) {
   document.getElementById('facilitatorGroupTitle').textContent = g.name;
