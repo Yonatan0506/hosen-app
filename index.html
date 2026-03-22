@@ -1393,7 +1393,8 @@ async function syncFromSupabase() {
         showNotif(`☁️ סונכרנו ${cloudGroups.length} קבוצות מהענן`, 'info', 3000);
         // אם מנחה ניסה להיכנס לפני שהנתונים הגיעו — נסה שוב עכשיו
         if (pendingFacilitatorEmail) {
-          openFacilitatorDashboard(pendingFacilitatorEmail);
+          const { email, groupId } = pendingFacilitatorEmail;
+          openFacilitatorDashboard(email, groupId);
         }
       }
     }
@@ -1661,7 +1662,7 @@ document.getElementById('newGroupForm').addEventListener('submit', function(e) {
 // ===== EMAILJS =====
 function sendFacilitatorEmail(group) {
   const baseUrl = 'https://yonatan0506.github.io/hosen-app/';
-  const dashboardUrl = `${baseUrl}?facilitator=${encodeURIComponent(group.facilitatorEmail)}`;
+  const dashboardUrl = `${baseUrl}?facilitator=${encodeURIComponent(group.facilitatorEmail)}&groupId=${group.id}`;
   const feedbackUrl = `${baseUrl}?feedback=${group.id}`;
   const templateParams = {
     facilitator_email: group.facilitatorEmail,
@@ -1947,6 +1948,7 @@ function checkFacilitatorMode() {
   const facilitatorEmail = params.get('facilitator');
   if (!facilitatorEmail) return;
   isFacilitatorMode = true;
+  const groupId = params.get('groupId') ? parseInt(params.get('groupId')) : null;
   document.querySelectorAll('.nav-btn').forEach(btn => {
     if (btn.textContent.includes('רכזת') || btn.textContent.includes('דאשבורד') || btn.textContent.includes('תשלום')) {
       btn.style.display = 'none';
@@ -1955,8 +1957,8 @@ function checkFacilitatorMode() {
   showPage('facilitator', document.querySelector('.nav-btn'));
   document.getElementById('facilitatorLoginEmail').value = facilitatorEmail;
   // נסה כניסה — אם הקבוצה לא עדיין ב-localStorage, המתן לסנכרון
-  if (!openFacilitatorDashboard(facilitatorEmail)) {
-    pendingFacilitatorEmail = facilitatorEmail;
+  if (!openFacilitatorDashboard(facilitatorEmail, groupId)) {
+    pendingFacilitatorEmail = { email: facilitatorEmail, groupId };
     document.getElementById('facilitatorLogin').innerHTML =
       '<div class="alert alert-info" style="margin:0;">⏳ מתחבר לנתוני הקבוצה מהענן, אנא המתן...</div>';
   }
@@ -1972,8 +1974,18 @@ function facilitatorLogin() {
 }
 
 // פתיחת דשבורד מנחה — מחזיר true אם הצליח, false אם הקבוצה לא נמצאה
-function openFacilitatorDashboard(email) {
-  const group = appData.groups.find(g => g.facilitatorEmail === email);
+// groupId — מזהה ייחודי של הקבוצה הספציפית (ממנע בחירת קבוצה ישנה עם אותו מייל)
+function openFacilitatorDashboard(email, groupId) {
+  let group = null;
+  if (groupId) {
+    // חיפוש מדויק: מייל + ID ספציפי של הקבוצה
+    group = appData.groups.find(g => g.facilitatorEmail === email && g.id === groupId);
+  }
+  if (!group) {
+    // fallback: מצא את הקבוצה העדכנית ביותר עם מייל זה
+    const matches = appData.groups.filter(g => g.facilitatorEmail === email);
+    group = matches.sort((a, b) => b.id - a.id)[0] || null;
+  }
   if (!group) return false;
   pendingFacilitatorEmail = null;
   currentFacilitatorGroup = group;
