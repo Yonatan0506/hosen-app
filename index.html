@@ -230,10 +230,11 @@ textarea{resize:vertical;min-height:80px;}
         <button class="btn btn-primary" onclick="facilitatorLogin()">כניסה ←</button>
       </div>
     </div>
+    <div id="facilitatorGroupPicker" style="display:none;"></div>
     <div id="facilitatorDashboard" style="display:none;">
       <div class="card" id="facilitatorGroupDetailsCard">
         <div class="section-badge">📋 פרטי הקבוצה</div>
-        <div class="card-title"><div class="card-title-icon">🌿</div><span id="facilitatorGroupTitle">פרטי הקבוצה שלך</span></div>
+        <div class="card-title" style="justify-content:space-between;"><div style="display:flex;align-items:center;gap:10px;"><div class="card-title-icon">🌿</div><span id="facilitatorGroupTitle">פרטי הקבוצה שלך</span></div><button id="switchGroupBtn" onclick="showFacilitatorGroupPicker()" style="display:none;background:none;border:1.5px solid var(--teal);color:var(--teal);border-radius:8px;padding:6px 12px;font-size:13px;font-family:Heebo,sans-serif;cursor:pointer;">↩ החלף קבוצה</button></div>
         <div id="facilitatorGroupDetailsContent"></div>
       </div>
       <div class="card" id="intakeCard">
@@ -599,7 +600,7 @@ const key=`pfb_${gid}`;const pending=JSON.parse(localStorage.getItem(key)||'[]')
 // ============================================================
 // FACILITATOR
 // ============================================================
-let currentFacilitatorGroup=null,pendingFacilitatorData=null;
+let currentFacilitatorGroup=null,pendingFacilitatorData=null,facilitatorEmail=null;
 
 function checkFacilitatorMode(){const p=new URLSearchParams(window.location.search);const fe=p.get('facilitator');if(!fe)return;const gid=p.get('groupId')?parseInt(p.get('groupId')):null;const gdata=p.get('gdata');document.querySelectorAll('.nav-btn').forEach(btn=>{if(btn.textContent.includes('רכזת')||btn.textContent.includes('דאשבורד')||btn.textContent.includes('תשלום'))btn.style.display='none';});showPage('facilitator',document.querySelector('.nav-btn'));document.getElementById('facilitatorLoginEmail').value=fe;// First try local data
 if(openFacilitatorDashboard(fe,gid))return;// Not in local — decode group from gdata URL param
@@ -607,7 +608,13 @@ if(gdata){const decoded=decodeGroupFromUrl(gdata);if(decoded){const idx=appData.
 
 function facilitatorLogin(){const email=document.getElementById('facilitatorLoginEmail').value.trim();if(!email){alert('אנא הזן מייל');return;}if(!openFacilitatorDashboard(email,null))showNotif('לא נמצאה קבוצה עם מייל זה.','danger');}
 
-function openFacilitatorDashboard(email,groupId){let group=null;if(groupId)group=appData.groups.find(g=>g.facilitatorEmail===email&&g.id===groupId);if(!group){const m=appData.groups.filter(g=>g.facilitatorEmail===email);group=m.sort((a,b)=>b.id-a.id)[0]||null;}if(!group)return false;pendingFacilitatorData=null;currentFacilitatorGroup=group;document.getElementById('facilitatorLogin').style.display='none';document.getElementById('facilitatorDashboard').style.display='block';renderFacilitatorGroupDetails(group);renderFacilitatorSessions();if(group.intake&&group.intakeDates&&group.intakeDates.some(Boolean)){showIntakeCompleted(group);}else{renderIntakeDates(group);}if(group.facilitatorFeedback){const fc=document.getElementById('facilitatorFeedbackCard');fc.style.display='block';fc.innerHTML=`<div style="text-align:center;padding:32px;"><div style="font-size:56px;margin-bottom:16px;">✅</div><h3>המשוב כבר הוגש</h3><p style="color:var(--muted);font-size:14px;">הקבוצה ממתינה לאישור תשלום.</p></div>`;}return true;}
+function openFacilitatorDashboard(email,groupId){facilitatorEmail=email;const all=appData.groups.filter(g=>g.facilitatorEmail===email);if(!all.length)return false;if(all.length>1&&!groupId){showFacilitatorGroupPicker();document.getElementById('facilitatorLogin').style.display='none';pendingFacilitatorData=null;return true;}let group=groupId?all.find(g=>g.id===groupId):null;if(!group)group=all.sort((a,b)=>b.id-a.id)[0];return _loadFacilitatorGroup(group,all.length);}
+
+function showFacilitatorGroupPicker(){const all=appData.groups.filter(g=>g.facilitatorEmail===facilitatorEmail);document.getElementById('facilitatorLogin').style.display='none';document.getElementById('facilitatorDashboard').style.display='none';const picker=document.getElementById('facilitatorGroupPicker');picker.style.display='block';const sl={active:'🟢 פעילה',feedback:'💬 ממתין לאישור',done:'✅ הסתיימה',payment:'💳 תשלום'};picker.innerHTML=`<div class="card"><div class="card-title"><div class="card-title-icon">🌿</div>הקבוצות שלך</div><p style="font-size:13px;color:var(--muted);margin-bottom:16px;">יש לך ${all.length} קבוצות — בחר/י את הקבוצה שברצונך לדווח עליה:</p><div style="display:flex;flex-direction:column;gap:12px;">${all.map(g=>{const sc=g.sessions.filter(s=>s&&!s.missed).length;return`<div style="border:1.5px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:border-color 0.2s;" onclick="selectFacilitatorGroup(${g.id})" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;"><div style="font-weight:700;font-size:15px;color:var(--charcoal);">${g.name}</div><span style="font-size:12px;">${sl[g.status]||g.status}</span></div><div style="font-size:13px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;"><span>📍 ${g.village}</span><span>🗓️ ${sc}/${g.sessionCount} מפגשים</span><span>👥 ${g.participants.length} משתתפים</span></div><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();selectFacilitatorGroup(${g.id})">כניסה לקבוצה ←</button></div>`;}).join('')}</div></div>`;}
+
+function selectFacilitatorGroup(id){const group=appData.groups.find(g=>g.id===id);if(!group)return;document.getElementById('facilitatorGroupPicker').style.display='none';const all=appData.groups.filter(g=>g.facilitatorEmail===facilitatorEmail);_loadFacilitatorGroup(group,all.length);}
+
+function _loadFacilitatorGroup(group,totalGroups){pendingFacilitatorData=null;currentFacilitatorGroup=group;document.getElementById('facilitatorLogin').style.display='none';document.getElementById('facilitatorGroupPicker').style.display='none';document.getElementById('facilitatorDashboard').style.display='block';const sb=document.getElementById('switchGroupBtn');if(sb)sb.style.display=totalGroups>1?'inline-flex':'none';const fc=document.getElementById('facilitatorFeedbackCard');fc.style.display='none';if(window._fbCardOriginal)fc.innerHTML=window._fbCardOriginal;renderFacilitatorGroupDetails(group);renderFacilitatorSessions();if(group.intake&&group.intakeDates&&group.intakeDates.some(Boolean)){showIntakeCompleted(group);}else{renderIntakeDates(group);}if(group.facilitatorFeedback){fc.style.display='block';fc.innerHTML=`<div style="text-align:center;padding:32px;"><div style="font-size:56px;margin-bottom:16px;">✅</div><h3>המשוב כבר הוגש</h3><p style="color:var(--muted);font-size:14px;">הקבוצה ממתינה לאישור תשלום.</p></div>`;}return true;}
 
 function renderFacilitatorGroupDetails(g){document.getElementById('facilitatorGroupTitle').textContent=g.name;document.getElementById('facilitatorGroupDetailsContent').innerHTML=`<div class="group-detail-summary"><div class="summary-grid"><div class="summary-row"><span class="summary-label">שם הקבוצה:</span><span class="summary-value">${g.name}</span></div><div class="summary-row"><span class="summary-label">יישוב:</span><span class="summary-value">${g.village}</span></div><div class="summary-row"><span class="summary-label">קהל יעד:</span><span class="summary-value">${g.audience.join(', ')}</span></div><div class="summary-row"><span class="summary-label">מפגשים:</span><span class="summary-value">${g.sessionCount}</span></div><div class="summary-row"><span class="summary-label">איש קשר:</span><span class="summary-value">${g.contactName||'—'}${g.contactPhone?' · '+g.contactPhone:''}</span></div><div class="summary-row"><span class="summary-label">רכזת:</span><span class="summary-value">${g.coordinatorName||'—'}</span></div><div class="summary-row" style="grid-column:1/-1;"><span class="summary-label">מטרת העל:</span><span class="summary-value">${g.goal||'—'}</span></div></div></div>`;}
 
@@ -646,6 +653,7 @@ function searchById(){const id=document.getElementById('searchIdInput').value.tr
 const styleEl=document.createElement('style');
 styleEl.textContent='@keyframes slideIn{from{transform:translateX(-20px);opacity:0;}to{transform:translateX(0);opacity:1;}}';
 document.head.appendChild(styleEl);
+window._fbCardOriginal=document.getElementById('facilitatorFeedbackCard').innerHTML;
 renderGroupsList();
 renderDashboard();
 setTimeout(()=>{checkForFeedbackMode();checkFacilitatorMode();checkCoordImport();checkExistingLogin();},150);
