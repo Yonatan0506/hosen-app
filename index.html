@@ -179,8 +179,23 @@ textarea{resize:vertical;min-height:80px;}
             </div></div>
           <div class="form-group"><label><span class="req">*</span> שם איש קשר בישוב</label><input type="text" id="contactName" placeholder="שם מלא" required></div>
           <div class="form-group"><label><span class="req">*</span> טלפון איש קשר</label><input type="tel" id="contactPhone" placeholder="05X-XXXXXXX" required></div>
-          <div class="form-group"><label><span class="req">*</span> שם הרכזת הממלאת</label><input type="text" id="coordinatorName" placeholder="שמך" required></div>
-          <div class="form-group"><label><span class="req">*</span> מייל רכזת החוסן</label><input type="email" id="coordinatorEmail" placeholder="coordinator@email.com" required></div>
+          <div class="form-group full"><label><span class="req">*</span> רכזת חוסן</label>
+            <select id="coordinatorSelect" onchange="onCoordSelect(this)" required style="margin-bottom:4px;">
+              <option value="">בחר/י רכזת...</option>
+              <option value="שלומית יומטוביאן|hosen5.sn@sn.matnasim.co.il">שלומית יומטוביאן</option>
+              <option value="ליאורה יבניאל|hosen7.sn@sn.matnasim.co.il">ליאורה יבניאל</option>
+              <option value="אוראל רדעי|hosen7.sn@sn.matnasim.co.il">אוראל רדעי</option>
+              <option value="גון|gon@sn.matnasim.co.il">גון</option>
+              <option value="עטרה|zahi-hosen@sn.matnasim.co.il">עטרה</option>
+              <option value="other">אחר (הזן ידנית)...</option>
+            </select>
+            <div id="coordCustomFields" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+              <input type="text" id="coordCustomName" placeholder="שם הרכזת" oninput="document.getElementById('coordinatorName').value=this.value">
+              <input type="email" id="coordCustomEmail" placeholder="מייל הרכזת" oninput="document.getElementById('coordinatorEmail').value=this.value">
+            </div>
+            <input type="hidden" id="coordinatorName" required>
+            <input type="hidden" id="coordinatorEmail" required>
+          </div>
           <div class="form-group"><label><span class="req">*</span> סכום מאושר לסדנה (₪)</label><input type="number" id="approvedAmount" placeholder="0" min="0" required></div>
           <div class="form-group full"><label><span class="req">*</span> מטרת / צורך העל לפתיחת הקבוצה</label><textarea id="groupGoal" placeholder="תארי בקצרה את מטרת הקבוצה וצורך הקהילה..." required></textarea></div>
         </div>
@@ -385,13 +400,23 @@ textarea{resize:vertical;min-height:80px;}
 // ---- MSAL + OneDrive (no admin consent needed) ----
 const SP_CONFIG={clientId:'6e7d433e-cd65-4220-b9fe-a48084f8bab3',tenantId:'d54891a9-014e-4aa7-837f-079587c8ee82'};
 const msalConfig={auth:{clientId:SP_CONFIG.clientId,authority:`https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,redirectUri:window.location.href.split('?')[0]},cache:{cacheLocation:'sessionStorage'}};
-const scopes=['https://graph.microsoft.com/Files.ReadWrite','https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
-const OD_FILE='/me/drive/root:/HosenApp/groups.json';
+// ── רכזות מאושרות ────────────────────────────────────────────
+const ALLOWED_COORDINATORS=[
+  {name:'שלומית יומטוביאן', email:'hosen5.sn@sn.matnasim.co.il'},
+  {name:'ליאורה יבניאל',    email:'hosen7.sn@sn.matnasim.co.il'},
+  {name:'אוראל רדעי',       email:'hosen7.sn@sn.matnasim.co.il'},
+  {name:'גון',              email:'gon@sn.matnasim.co.il'},
+  {name:'עטרה',             email:'zahi-hosen@sn.matnasim.co.il'},
+];
+const ALLOWED_EMAILS=ALLOWED_COORDINATORS.map(c=>c.email.toLowerCase()).concat(['1004692504@eduil.net']);
+const MASTER_UPN='zahi-hosen@sn.matnasim.co.il';
+const scopes=['https://graph.microsoft.com/Files.ReadWrite.All','https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
+const OD_FILE=`/users/${MASTER_UPN}/drive/root:/HosenApp/groups.json`;
 let msalInstance=null,spToken=null,currentAccount=null;
 
 async function initMsal(){if(msalInstance)return;msalInstance=new msal.PublicClientApplication(msalConfig);await msalInstance.initialize();}
 
-async function spLogin(){try{await initMsal();const r=await msalInstance.loginPopup({scopes});currentAccount=r.account;spToken=r.accessToken;updateSPStatus(true,currentAccount.name,'מחבר...');await initOneDrive();}catch(e){const blocked=e.errorCode==='popup_window_error'||(e.message&&(e.message.includes('popup')||e.message.includes('block')));if(blocked){updateSPStatus(false,null,'אפשר פופאפים ונסה שוב');showNotif('⚠️ הדפדפן חסם את חלון הכניסה. לחץ על האייקון בסרגל הכתובת ובחר "אפשר פופאפים לאתר זה", לאחר מכן נסה שוב.','warning',10000);}else{updateSPStatus(false,null,'כניסה נכשלה');showNotif('❌ '+e.message,'danger',6000);}}}
+async function spLogin(){try{await initMsal();const r=await msalInstance.loginPopup({scopes});currentAccount=r.account;spToken=r.accessToken;const ue=(currentAccount.username||'').toLowerCase();if(!ALLOWED_EMAILS.includes(ue)){updateSPStatus(false,null,'אין הרשאת גישה');showNotif('❌ המייל '+ue+' אינו מורשה לגשת למערכת. פנה למנהל המערכת.','danger',10000);currentAccount=null;spToken=null;return;}updateSPStatus(true,currentAccount.name,'מחבר...');autoFillCoordinator(ue);await initOneDrive();}catch(e){const blocked=e.errorCode==='popup_window_error'||(e.message&&(e.message.includes('popup')||e.message.includes('block')));if(blocked){updateSPStatus(false,null,'אפשר פופאפים ונסה שוב');showNotif('⚠️ הדפדפן חסם את חלון הכניסה. לחץ על האייקון בסרגל הכתובת ובחר "אפשר פופאפים לאתר זה", לאחר מכן נסה שוב.','warning',10000);}else{updateSPStatus(false,null,'כניסה נכשלה');showNotif('❌ '+e.message,'danger',6000);}}}
 
 async function getToken(){if(!currentAccount||!msalInstance)return null;try{const r=await msalInstance.acquireTokenSilent({scopes,account:currentAccount});spToken=r.accessToken;return spToken;}catch{try{const r=await msalInstance.acquireTokenPopup({scopes});spToken=r.accessToken;return spToken;}catch(e){return null;}}}
 
@@ -425,7 +450,7 @@ function applyPendingCoordImport(){const enc=localStorage.getItem('pendingCoordI
 
 function updateSPStatus(connected,name,detail){const btn=document.getElementById('spConnectBtn'),dot=document.getElementById('spDot'),txt=document.getElementById('spText');if(connected){if(btn){btn.textContent='✓ מחובר';btn.style.background='var(--success)';}if(dot)dot.style.background='#27ae60';if(txt){txt.textContent=(name||'')+(detail?' — '+detail:'');txt.style.color='#7dffb3';}}else{if(btn){btn.textContent='🔗 התחבר';btn.style.background='var(--teal)';}if(dot)dot.style.background='#c0392b';if(txt){txt.textContent=detail||'לא מחובר';txt.style.color='rgba(255,255,255,0.5)';}}}
 
-async function checkExistingLogin(){try{await initMsal();const accounts=msalInstance.getAllAccounts();if(accounts.length>0){currentAccount=accounts[0];const r=await msalInstance.acquireTokenSilent({scopes,account:currentAccount});spToken=r.accessToken;updateSPStatus(true,currentAccount.name,'מתחבר...');await initOneDrive();}}catch(e){}}
+async function checkExistingLogin(){try{await initMsal();const accounts=msalInstance.getAllAccounts();if(accounts.length>0){currentAccount=accounts[0];const ue=(currentAccount.username||'').toLowerCase();if(!ALLOWED_EMAILS.includes(ue)){currentAccount=null;return;}const r=await msalInstance.acquireTokenSilent({scopes,account:currentAccount});spToken=r.accessToken;updateSPStatus(true,currentAccount.name,'מתחבר...');autoFillCoordinator(ue);await initOneDrive();}}catch(e){}}
 
 // ============================================================
 // EMAIL VIA GRAPH API
@@ -542,7 +567,7 @@ zone.addEventListener('drop',e=>{
 // ============================================================
 document.getElementById('newGroupForm').addEventListener('submit',function(e){e.preventDefault();const audience=getSelectedAudience();if(audience.length===0){alert('אנא בחרי לפחות קהל יעד אחד');return;}const group={id:appData.nextId++,name:document.getElementById('groupName').value,village:document.getElementById('village').value,facilitatorName:document.getElementById('facilitatorName').value,facilitatorEmail:document.getElementById('facilitatorEmail').value,facilitatorPhone:document.getElementById('facilitatorPhone').value,sessionCount:parseInt(document.getElementById('sessionCount').value),audience,contactName:document.getElementById('contactName').value,contactPhone:document.getElementById('contactPhone').value,coordinatorName:document.getElementById('coordinatorName').value,coordinatorEmail:document.getElementById('coordinatorEmail').value,approvedAmount:document.getElementById('approvedAmount').value,goal:document.getElementById('groupGoal').value,status:'active',sessions:[],intake:null,intakeDates:[],facilitatorFeedback:null,participantFeedbacks:[],approvedForPayment:false,createdAt:new Date().toISOString(),participants:parsedParticipants.length>0?parsedParticipants:[]};appData.groups.push(group);saveData(group);sendFacilitatorEmail(group);document.getElementById('modalEmail').textContent=group.facilitatorEmail;document.getElementById('successModal').classList.add('open');resetForm();renderGroupsList();});
 
-function resetForm(){document.getElementById('newGroupForm').reset();document.querySelectorAll('#audienceTags .tag').forEach(t=>t.classList.remove('selected'));document.getElementById('fileUploadZone').classList.remove('has-file');document.getElementById('fileName').textContent='';document.getElementById('duplicateWarning').classList.remove('show');const ps=document.getElementById('pdfParseStatus');ps.style.display='none';ps.style.color='';document.getElementById('pdfPreview').style.display='none';parsedParticipants=[];}
+function resetForm(){document.getElementById('newGroupForm').reset();document.querySelectorAll('#audienceTags .tag').forEach(t=>t.classList.remove('selected'));document.getElementById('fileUploadZone').classList.remove('has-file');document.getElementById('fileName').textContent='';document.getElementById('duplicateWarning').classList.remove('show');const ps=document.getElementById('pdfParseStatus');ps.style.display='none';ps.style.color='';document.getElementById('pdfPreview').style.display='none';parsedParticipants=[];document.getElementById('coordCustomFields').style.display='none';if(currentAccount)autoFillCoordinator((currentAccount.username||'').toLowerCase());}
 function closeModal(){document.getElementById('successModal').classList.remove('open');}
 
 // ============================================================
