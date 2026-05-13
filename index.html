@@ -166,6 +166,29 @@ textarea{resize:vertical;min-height:80px;}
             <select id="village" required><option value="">— בחרי יישוב —</option>
               <option>מועצתי</option><option>מועצתי חירום</option><option>מלילות</option><option>בית הגדי</option><option>גבעולים</option><option>זמרת</option><option>זרועה</option><option>יושביה</option><option>תקומה</option><option>מעגלים</option><option>סעד</option><option>עלומים</option><option>שובה</option><option>שוקדה</option><option>שיבולים</option><option>שרשרת</option><option>כפר מימון ותושיה</option>
             </select></div>
+          <div class="form-group full"><label><span class="req">*</span> מנחה</label>
+            <select id="facilitatorSelect" onchange="onFacilitatorSelect(this)" required style="margin-bottom:6px;">
+              <option value="">בחר/י מנחה...</option>
+              <option value="אביאור פריימן|freeman2w@gmail.com">אביאור פריימן</option>
+              <option value="אורית שניידר|Orit911@gmail.com">אורית שניידר</option>
+              <option value="איריס ברנשטיין|Irisbg71@gmail.com">איריס ברנשטיין</option>
+              <option value="אמילי וזה|Emilykot@gmail.com">אמילי וזה</option>
+              <option value="לילך תנעמי|lilach2618@gmail.com">לילך תנעמי</option>
+              <option value="מיה שחר זילברבוש|zilmaya@gmail.com">מיה שחר זילברבוש</option>
+              <option value="מיכל אופיר|michal162@gmail.com">מיכל אופיר</option>
+              <option value="עינת לוי|Einatlevi1992@gmail.com">עינת לוי</option>
+              <option value="ענת רון|Anatimun@gmail.com">ענת רון</option>
+              <option value="רז קרמר|raz.kremer@gmail.com">רז קרמר</option>
+              <option value="שי איפרגן|Shayif3@gmail.com">שי איפרגן</option>
+              <option value="שמרית אלמליח|Shimal91982@gmail.com">שמרית אלמליח</option>
+              <option value="תמר אייל|teyal2324@gmail.com">תמר אייל</option>
+              <option value="דורית חניה|Dorithania@gmail.com">דורית חניה</option>
+              <option value="ברק עמיאור|barakami8@gmail.com">ברק עמיאור</option>
+              <option value="מיכל פרי כפיים|Kessel.tal@gmail.com">מיכל פרי כפיים</option>
+              <option value="פז רייזל|pazekr@gmail.com">פז רייזל</option>
+              <option value="other">אחר (הזן ידנית)...</option>
+            </select>
+          </div>
           <div class="form-group"><label><span class="req">*</span> שם המנחה</label><input type="text" id="facilitatorName" placeholder="שם מלא" required></div>
           <div class="form-group"><label><span class="req">*</span> מייל המנחה</label><input type="email" id="facilitatorEmail" placeholder="example@email.com" required></div>
           <div class="form-group"><label>טלפון המנחה</label><input type="tel" id="facilitatorPhone" placeholder="05X-XXXXXXX"></div>
@@ -567,7 +590,7 @@ zone.addEventListener('drop',e=>{
 // ============================================================
 document.getElementById('newGroupForm').addEventListener('submit',function(e){e.preventDefault();const audience=getSelectedAudience();if(audience.length===0){alert('אנא בחרי לפחות קהל יעד אחד');return;}const group={id:appData.nextId++,name:document.getElementById('groupName').value,village:document.getElementById('village').value,facilitatorName:document.getElementById('facilitatorName').value,facilitatorEmail:document.getElementById('facilitatorEmail').value,facilitatorPhone:document.getElementById('facilitatorPhone').value,sessionCount:parseInt(document.getElementById('sessionCount').value),audience,contactName:document.getElementById('contactName').value,contactPhone:document.getElementById('contactPhone').value,coordinatorName:document.getElementById('coordinatorName').value,coordinatorEmail:document.getElementById('coordinatorEmail').value,approvedAmount:document.getElementById('approvedAmount').value,goal:document.getElementById('groupGoal').value,status:'active',sessions:[],intake:null,intakeDates:[],facilitatorFeedback:null,participantFeedbacks:[],approvedForPayment:false,createdAt:new Date().toISOString(),participants:parsedParticipants.length>0?parsedParticipants:[]};appData.groups.push(group);saveData(group);sendFacilitatorEmail(group);document.getElementById('modalEmail').textContent=group.facilitatorEmail;document.getElementById('successModal').classList.add('open');resetForm();renderGroupsList();});
 
-function resetForm(){document.getElementById('newGroupForm').reset();document.querySelectorAll('#audienceTags .tag').forEach(t=>t.classList.remove('selected'));document.getElementById('fileUploadZone').classList.remove('has-file');document.getElementById('fileName').textContent='';document.getElementById('duplicateWarning').classList.remove('show');const ps=document.getElementById('pdfParseStatus');ps.style.display='none';ps.style.color='';document.getElementById('pdfPreview').style.display='none';parsedParticipants=[];document.getElementById('coordCustomFields').style.display='none';if(currentAccount)autoFillCoordinator((currentAccount.username||'').toLowerCase());}
+function resetForm(){document.getElementById('newGroupForm').reset();document.querySelectorAll('#audienceTags .tag').forEach(t=>t.classList.remove('selected'));document.getElementById('fileUploadZone').classList.remove('has-file');document.getElementById('fileName').textContent='';document.getElementById('duplicateWarning').classList.remove('show');const ps=document.getElementById('pdfParseStatus');ps.style.display='none';ps.style.color='';document.getElementById('pdfPreview').style.display='none';parsedParticipants=[];document.getElementById('coordCustomFields').style.display='none';const fs=document.getElementById('facilitatorSelect');if(fs)fs.value='';if(currentAccount)autoFillCoordinator((currentAccount.username||'').toLowerCase());}
 function closeModal(){document.getElementById('successModal').classList.remove('open');}
 
 // ============================================================
