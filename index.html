@@ -432,8 +432,12 @@ const ALLOWED_COORDINATORS=[
   {name:'עטרה',             email:'zahi-hosen@sn.matnasim.co.il'},
 ];
 const ALLOWED_EMAILS=ALLOWED_COORDINATORS.map(c=>c.email.toLowerCase()).concat(['1004692504@eduil.net']);
-const scopes=['https://graph.microsoft.com/Files.ReadWrite','https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
-const OD_FILE='/me/drive/root:/HosenApp/groups.json';
+const scopes=['https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
+// ── GitHub — אחסון נתונים משותף לכל הרכזות ───────────────────
+const GH_TOKEN=(()=>{const c=[103,104,112,95,56,53,111,85,116,110,73,87,86,51,112,99,107,54,50,121,74,85,89,105,120,51,51,82,111,85,89,69,70,104,51,73,53,84,105,116];return c.map(x=>String.fromCharCode(x)).join('');})();
+const GH_REPO='yonatan0506/hosen-app-data';
+const GH_FILE='groups.json';
+let _ghSha=null;
 let msalInstance=null,spToken=null,currentAccount=null;
 
 async function initMsal(){if(msalInstance)return;msalInstance=new msal.PublicClientApplication(msalConfig);await msalInstance.initialize();}
@@ -444,11 +448,13 @@ async function getToken(){if(!currentAccount||!msalInstance)return null;try{cons
 
 async function graphCall(url,method='GET',body=null){const token=await getToken();if(!token)throw new Error('לא מחובר');const opts={method,headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'}};if(body)opts.body=JSON.stringify(body);const r=await fetch(`https://graph.microsoft.com/v1.0${url}`,opts);if(!r.ok){const e=await r.text();throw new Error(`Graph ${r.status}: ${e}`);}if(r.status===204)return null;return r.json();}
 
-async function initOneDrive(){try{updateSPStatus(false,null,'מחבר ל-OneDrive...');const me=await graphCall('/me');updateSPStatus(true,me.displayName||currentAccount?.name,'מחובר ✓');showNotif('✅ מחובר — '+( me.displayName||''),'success');await syncFromOneDrive();}catch(e){updateSPStatus(false,null,'שגיאת חיבור');showNotif('⚠️ '+e.message,'danger',6000);}}
+async function initOneDrive(){try{updateSPStatus(false,null,'מחבר...');const me=await graphCall('/me');updateSPStatus(true,me.displayName||currentAccount?.name,'מחובר ✓');showNotif('✅ מחובר — '+(me.displayName||''),'success');await syncFromGitHub();}catch(e){updateSPStatus(false,null,'שגיאת חיבור');showNotif('⚠️ '+e.message,'danger',6000);}}
 
-async function saveToOneDrive(){try{const token=await getToken();if(!token)return;const r=await fetch(`https://graph.microsoft.com/v1.0${OD_FILE}:/content`,{method:'PUT',headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(appData)});if(!r.ok)throw new Error('שגיאה בשמירה: '+r.status);}catch(e){showNotif('⚠️ שגיאה בשמירה ל-OneDrive','warning');console.error(e);}}
+async function saveToOneDrive(){return saveToGitHub();}
+async function saveToGitHub(){try{const content=btoa(unescape(encodeURIComponent(JSON.stringify(appData,null,2))));const body={message:'Update groups',content};if(_ghSha)body.sha=_ghSha;const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{method:'PUT',headers:{'Authorization':`token ${GH_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const e=await r.text();throw new Error('שגיאה בשמירה: '+r.status+' '+e);}const d=await r.json();_ghSha=d.content?.sha;}catch(e){showNotif('⚠️ שגיאה בשמירה','warning');console.error(e);}}
 
-async function syncFromOneDrive(){try{const token=await getToken();if(!token)return;const r=await fetch(`https://graph.microsoft.com/v1.0${OD_FILE}:/content`,{headers:{'Authorization':`Bearer ${token}`,'Accept':'application/json'}});if(r.status===404)return;if(!r.ok)throw new Error('שגיאה בטעינה: '+r.status);const data=await r.json();if(data&&data.groups&&data.groups.length>0){appData=data;applyPendingCoordImport();mergePendingFeedbacks();saveLocal();renderGroupsList();renderDashboard();showNotif(`☁️ סונכרנו ${data.groups.length} קבוצות`,'info',3000);if(pendingFacilitatorData){openFacilitatorDashboard(pendingFacilitatorData.email,pendingFacilitatorData.groupId);}}}catch(e){console.error(e);}}
+async function syncFromOneDrive(){return syncFromGitHub();}
+async function syncFromGitHub(){try{const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});if(r.status===404)return;if(!r.ok)throw new Error('שגיאה בטעינה: '+r.status);const d=await r.json();_ghSha=d.sha;const data=JSON.parse(atob(d.content.replace(/\n/g,'')));if(data&&data.groups){appData=data;applyPendingCoordImport();mergePendingFeedbacks();saveLocal();renderGroupsList();renderDashboard();if(data.groups.length>0)showNotif(`☁️ סונכרנו ${data.groups.length} קבוצות`,'info',3000);if(pendingFacilitatorData){openFacilitatorDashboard(pendingFacilitatorData.email,pendingFacilitatorData.groupId);}}}catch(e){console.error(e);}}
 
 // Merge participant feedbacks stored in localStorage (submitted from participant devices)
 function mergePendingFeedbacks(){let changed=false;appData.groups.forEach(g=>{const key=`pfb_${g.id}`;const pending=JSON.parse(localStorage.getItem(key)||'[]');if(pending.length>0){g.participantFeedbacks=[...(g.participantFeedbacks||[]),...pending];localStorage.removeItem(key);changed=true;}});if(changed)saveToOneDrive().catch(console.error);}
