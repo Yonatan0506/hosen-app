@@ -432,9 +432,8 @@ const ALLOWED_COORDINATORS=[
   {name:'עטרה',             email:'zahi-hosen@sn.matnasim.co.il'},
 ];
 const ALLOWED_EMAILS=ALLOWED_COORDINATORS.map(c=>c.email.toLowerCase()).concat(['1004692504@eduil.net']);
-const MASTER_UPN='zahi-hosen@sn.matnasim.co.il';
-const scopes=['https://graph.microsoft.com/Files.ReadWrite.All','https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
-const OD_FILE=`/users/${MASTER_UPN}/drive/root:/HosenApp/groups.json`;
+const scopes=['https://graph.microsoft.com/Files.ReadWrite','https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
+const OD_FILE='/me/drive/root:/HosenApp/groups.json';
 let msalInstance=null,spToken=null,currentAccount=null;
 
 async function initMsal(){if(msalInstance)return;msalInstance=new msal.PublicClientApplication(msalConfig);await msalInstance.initialize();}
