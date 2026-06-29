@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>מערכת ניהול קבוצות חוסן</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@400;700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -847,9 +850,4 @@ const styleEl=document.createElement('style');
 styleEl.textContent='@keyframes slideIn{from{transform:translateX(-20px);opacity:0;}to{transform:translateX(0);opacity:1;}}';
 document.head.appendChild(styleEl);
 window._fbCardOriginal=document.getElementById('facilitatorFeedbackCard').innerHTML;
-renderGroupsList();
-renderDashboard();
-setTimeout(()=>{checkForFeedbackMode();checkFacilitatorMode();checkCoordImport();checkExistingLogin();},150);
-</script>
-</body>
-</html>
+renderGr
