@@ -850,4 +850,9 @@ const styleEl=document.createElement('style');
 styleEl.textContent='@keyframes slideIn{from{transform:translateX(-20px);opacity:0;}to{transform:translateX(0);opacity:1;}}';
 document.head.appendChild(styleEl);
 window._fbCardOriginal=document.getElementById('facilitatorFeedbackCard').innerHTML;
-renderGr
+renderGroupsList();
+renderDashboard();
+setTimeout(()=>{checkForFeedbackMode();checkFacilitatorMode();checkCoordImport();checkExistingLogin();},150);
+</script>
+</body>
+</html>
