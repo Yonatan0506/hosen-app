@@ -476,9 +476,14 @@ async function saveFacilitatorGroupToGitHub(group){try{await _doSaveFacilitatorG
 async function syncFromOneDrive(){return syncFromGitHub();}
 async function syncFromGitHub(){try{const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});if(r.status===404)return;if(!r.ok)throw new Error('שגיאה בטעינה: '+r.status);const d=await r.json();_ghSha=d.sha;const ghData=JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));if(!ghData||ghData.groups===undefined)return;
 // מיזוג: מצא קבוצות מקומיות שאינן ב-GitHub (לפי id+coordinatorEmail)
-const deletedIds=new Set(JSON.parse(localStorage.getItem('deletedGroups')||'[]'));const filteredGh={...ghData,groups:ghData.groups.filter(g=>!deletedIds.has(g.id))};if(deletedIds.size>0&&filteredGh.groups.length<ghData.groups.length){appData=filteredGh;await saveToGitHub();}const ghGroups=filteredGh.groups;const localToAdd=appData.groups.filter(lg=>{const match=ghGroups.find(gg=>gg.id===lg.id);if(!match)return true;// ID לא קיים בGitHub — הוסף
-if(match.coordinatorEmail!==lg.coordinatorEmail)return true;// אותו ID, רכזת שונה — קבוצה אחרת
-return false;// אותו ID ואותה רכזת — כבר קיים
+const deletedIds=new Set(JSON.parse(localStorage.getItem('deletedGroups')||'[]'));const filteredGh={...ghData,groups:ghData.groups.filter(g=>!deletedIds.has(g.id))};if(deletedIds.size>0&&filteredGh.groups.length<ghData.groups.length){appData=filteredGh;await saveToGitHub();}const ghGroups=filteredGh.groups;
+// בדיקה לפי id+רכזת וגם לפי שם+יישוב+רכזת — כדי למנוע כפילויות כשה-ID השתנה בין שמירות
+const localToAdd=appData.groups.filter(lg=>{
+  const byId=ghGroups.find(gg=>gg.id===lg.id&&gg.coordinatorEmail===lg.coordinatorEmail);
+  if(byId)return false;// קיים לפי ID + רכזת
+  const byName=ghGroups.find(gg=>gg.name===lg.name&&gg.village===lg.village&&gg.coordinatorEmail===lg.coordinatorEmail);
+  if(byName)return false;// קיים לפי שם + יישוב + רכזת (מניעת כפילות)
+  return true;// קבוצה חדשה אמיתית
 });
 if(localToAdd.length>0){let nextId=Math.max(filteredGh.nextId||1,...ghGroups.map(g=>g.id+1),1);const added=localToAdd.map(g=>{const conflict=ghGroups.find(gg=>gg.id===g.id);return conflict?{...g,id:nextId++}:{...g};});appData={...filteredGh,groups:[...ghGroups,...added],nextId:Math.max(filteredGh.nextId||1,nextId)};await saveToGitHub();showNotif(`☁️ סונכרן + ${added.length} קבוצות הועלו`,'info',4000);}else{appData=filteredGh;if(ghData.groups.length>0)showNotif(`☁️ סונכרנו ${ghData.groups.length} קבוצות`,'info',3000);}
 applyPendingCoordImport();mergePendingFeedbacks();saveLocal();renderGroupsList();renderDashboard();if(pendingFacilitatorData){openFacilitatorDashboard(pendingFacilitatorData.email,pendingFacilitatorData.groupId);}}catch(e){console.error(e);}}
