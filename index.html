@@ -138,7 +138,7 @@ textarea{resize:vertical;min-height:80px;}
     <button class="nav-btn" onclick="showPage('dashboard',this)">📊 דאשבורד</button>
     <button class="nav-btn" onclick="showPage('payment',this)">💳 תשלום</button>
     <button class="nav-btn" onclick="showPage('archive',this)">📦 ארכיון <span id="archiveCount" style="background:var(--teal);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-inline-start:4px;">0</span></button>
-    <button class="btn btn-primary btn-sm" id="spConnectBtn" onclick="spLogin()" style="font-size:13px;">🔗 התחבר</button><button class="btn btn-secondary btn-sm" id="syncBtn" onclick="manualSync()" style="font-size:13px;display:none;">🔄 סנכרן</button><button class="btn btn-secondary btn-sm" onclick="exportFeedbacksToExcel()" style="font-size:13px;background:var(--teal);color:white;">📊 ייצוא משובים</button>
+    <button class="btn btn-primary btn-sm" id="spConnectBtn" onclick="spLogin()" style="font-size:13px;">🔗 התחבר</button><button class="btn btn-secondary btn-sm" id="syncBtn" onclick="manualSync()" style="font-size:13px;display:none;">🔄 סנכרן</button><button class="btn btn-secondary btn-sm" onclick="exportFeedbacksToExcel()" style="font-size:13px;background:var(--teal);color:white;">📊 ייצוא משובים</button><button class="btn btn-secondary btn-sm" onclick="bkOpenPanel()" style="font-size:13px;" title="גיבוי מקומי">💾 גיבוי <span id="bkDot" style="width:8px;height:8px;border-radius:50%;background:#c9762f;display:inline-block;margin-inline-start:4px;"></span></button>
   </nav>
   <div id="spStatus" style="font-size:12px;color:rgba(255,255,255,0.5);display:flex;align-items:center;gap:6px;">
     <span id="spDot" style="width:8px;height:8px;border-radius:50%;background:#6b7f93;display:inline-block;"></span>
@@ -556,10 +556,11 @@ function loadData(){const s=localStorage.getItem('hosenApp');if(s)try{appData=JS
 function saveLocal(){localStorage.setItem('hosenApp',JSON.stringify(appData));}
 async function saveParticipantFeedbackToGitHub(groupId,fb){try{const r0=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});if(!r0.ok)throw new Error('שגיאה בקריאה: '+r0.status);const d0=await r0.json();const sha=d0.sha;const ghData=JSON.parse(decodeURIComponent(escape(atob(d0.content.replace(/\n/g,'')))));const g=ghData.groups.find(x=>x.id===groupId);if(!g)throw new Error('קבוצה לא נמצאה: '+groupId);if(!g.participantFeedbacks)g.participantFeedbacks=[];g.participantFeedbacks.push(fb);if(g.status==='active')g.status='feedback';const content=btoa(unescape(encodeURIComponent(JSON.stringify(ghData,null,2))));const body={message:'Participant feedback: group '+groupId,content,sha};const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{method:'PUT',headers:{'Authorization':`token ${GH_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const e=await r.text();throw new Error('שגיאה בשמירה: '+r.status+' '+e);}}catch(e){console.error('saveParticipantFeedbackToGitHub error:',e);throw e;}}
 let _pendingSave=null;
-function saveData(){saveLocal();var p=currentFacilitatorGroup?saveFacilitatorGroupToGitHub(currentFacilitatorGroup):saveToGitHub();_pendingSave=p.catch(function(e){console.error(e);});_pendingSave.then(function(){if(_pendingSave===p||true)_pendingSave=null;});return p;}
+function saveData(){saveLocal();try{backupOnSave(currentFacilitatorGroup||null);}catch(e){}var p=currentFacilitatorGroup?saveFacilitatorGroupToGitHub(currentFacilitatorGroup):saveToGitHub();_pendingSave=p.catch(function(e){console.error(e);});_pendingSave.then(function(){if(_pendingSave===p||true)_pendingSave=null;});return p;}
 window.addEventListener('beforeunload',function(ev){if(_pendingSave){ev.preventDefault();ev.returnValue='\u05D4\u05E9\u05DE\u05D9\u05E8\u05D4 \u05E2\u05D3\u05D9\u05D9\u05DF \u05D1\u05EA\u05D4\u05DC\u05D9\u05DA \u2014 \u05D4\u05DE\u05EA\u05DF \u05E8\u05D2\u05E2';return ev.returnValue;}});
 try{localStorage.removeItem('deletedGroups');}catch(e){}
 loadData();
+try{bkRestore();}catch(e){}
 
 // ============================================================
 // NOTIFICATIONS
@@ -751,6 +752,125 @@ function closeGroupDetail(){document.getElementById('groupDetailModal').classLis
 
 function renderCoordAttendanceTable(g){if(!g.participants||!g.participants.length)return'';const recordedSessions=g.sessions.filter(s=>s).length;if(!recordedSessions)return`<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:13px;color:var(--slate);margin-bottom:8px;">👥 משתתפים (${g.participants.length}):</div><div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border);max-height:180px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:var(--sand);"><th style="padding:7px 10px;text-align:right;">#</th><th style="padding:7px 10px;text-align:right;">שם</th><th style="padding:7px 10px;text-align:right;">ת"ז</th><th style="padding:7px 10px;text-align:right;">טלפון</th></tr></thead><tbody>${g.participants.map((p,i)=>`<tr style="border-top:1px solid var(--border);"><td style="padding:6px 10px;color:var(--muted);">${i+1}</td><td style="padding:6px 10px;font-weight:500;">${p.name}</td><td style="padding:6px 10px;">${p.id||'—'}</td><td style="padding:6px 10px;">${p.phone||'—'}</td></tr>`).join('')}</tbody></table></div></div>`;const hdr=Array.from({length:g.sessionCount},(_,si)=>{const d=g.intakeDates&&g.intakeDates[si]?formatDateHe(g.intakeDates[si]):'';const s=g.sessions[si];const missed=s&&s.missed;return`<th style="padding:7px 5px;text-align:center;white-space:nowrap;min-width:52px;font-size:11px;"><div style="font-weight:600;">מפגש ${si+1}</div>${d?`<div style="opacity:0.85;">${d}</div>`:''}${missed?'<div>❌</div>':''}</th>`;}).join('');const rows=g.participants.map((p,pi)=>{const tot=g.sessions.filter(s=>s&&!s.missed&&s.present&&s.present.includes(pi)).length;const totalDone=g.sessions.filter(s=>s&&!s.missed).length;const cells=Array.from({length:g.sessionCount},(_,si)=>{const s=g.sessions[si];if(!s)return`<td style="padding:6px 5px;text-align:center;color:var(--muted);font-size:12px;">—</td>`;if(s.missed)return`<td style="padding:6px 5px;text-align:center;background:#fdf0ef;font-size:11px;">❌</td>`;const pr=s.present&&s.present.includes(pi);return`<td style="padding:6px 5px;text-align:center;background:${pr?'#edf7f1':'#f8f9fa'};color:${pr?'var(--success)':'#ccc'};font-size:14px;font-weight:700;">${pr?'✓':'✗'}</td>`;}).join('');return`<tr style="border-bottom:1px solid var(--border);"><td style="padding:7px 10px;font-weight:500;font-size:13px;white-space:nowrap;">${p.name}</td>${cells}<td style="padding:7px 10px;text-align:center;font-weight:700;color:var(--teal);font-size:13px;">${tot}${totalDone>0?'/'+totalDone:''}</td></tr>`;}).join('');return`<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:13px;color:var(--slate);margin-bottom:8px;">👥 נוכחות משתתפים:</div><div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border);"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:var(--teal);color:white;"><th style="padding:8px 10px;text-align:right;font-size:13px;">שם</th>${hdr}<th style="padding:7px 10px;text-align:center;font-size:11px;">נוכחות</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;}
 function participantFeedbackUrl(g){return window.location.href.split('?')[0]+'?feedback='+g.id+'&gname='+encodeURIComponent(g.name)+'&gvillage='+encodeURIComponent(g.village);}
+
+// ============================================================
+// שכבת גיבוי מקומי — File System Access API
+// ============================================================
+let _bkDir=null,_bkBusy=false,_bkQueue=new Set(),_bkTimer=null;
+function bkSupported(){return typeof window.showDirectoryPicker==='function';}
+function _bkIdb(){return new Promise(function(res,rej){var r=indexedDB.open('hosenBackup',1);r.onupgradeneeded=function(){r.result.createObjectStore('kv');};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};});}
+function _bkGet(k){return _bkIdb().then(function(db){return new Promise(function(res){var t=db.transaction('kv','readonly').objectStore('kv').get(k);t.onsuccess=function(){res(t.result);};t.onerror=function(){res(null);};});});}
+function _bkSet(k,v){return _bkIdb().then(function(db){return new Promise(function(res){var t=db.transaction('kv','readwrite').objectStore('kv').put(v,k);t.onsuccess=function(){res(true);};t.onerror=function(){res(false);};});});}
+function _bkSafe(s){return String(s==null?'':s).replace(/[\\\/:*?"<>|\n\r\t]/g,'-').replace(/\s+/g,' ').trim().slice(0,60)||'ללא-שם';}
+function _bkStamp(){var d=new Date(),p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
+
+async function bkPerm(ask){
+  if(!_bkDir)return false;
+  try{
+    var p=await _bkDir.queryPermission({mode:'readwrite'});
+    if(p==='granted')return true;
+    if(!ask)return false;
+    p=await _bkDir.requestPermission({mode:'readwrite'});
+    return p==='granted';
+  }catch(e){return false;}
+}
+async function bkRestore(){
+  if(!bkSupported())return;
+  try{var h=await _bkGet('dir');if(h){_bkDir=h;}}catch(e){}
+  bkStatus();
+}
+async function bkChoose(){
+  if(!bkSupported()){showNotif('⚠️ הדפדפן הזה לא תומך בגיבוי אוטומטי לתיקייה. יש להשתמש בכרום או Edge.','warning',7000);return;}
+  try{
+    var dir=await window.showDirectoryPicker({mode:'readwrite',id:'hosenBackup'});
+    _bkDir=dir;await _bkSet('dir',dir);
+    localStorage.setItem('bkFolderName',dir.name||'');
+    bkStatus();showNotif('✅ תיקיית הגיבוי נבחרה — מגבה כעת...','success',3000);
+    await bkAll(true);
+  }catch(e){if(e&&e.name!=='AbortError')showNotif('⚠️ '+e.message,'warning',6000);}
+}
+async function bkDisconnect(){_bkDir=null;await _bkSet('dir',null);localStorage.removeItem('bkFolderName');bkStatus();showNotif('הגיבוי המקומי נותק','info');}
+
+async function _bkWrite(dirHandle,name,text){
+  var fh=await dirHandle.getFileHandle(name,{create:true});
+  var w=await fh.createWritable();
+  await w.write(text);await w.close();
+}
+async function bkGroup(g,silent){
+  if(!_bkDir||!g)return false;
+  if(!(await bkPerm(false)))return false;
+  try{
+    var sub=await _bkDir.getDirectoryHandle('קבוצות',{create:true});
+    await _bkWrite(sub,'קבוצה-'+g.id+'-'+_bkSafe(g.name)+'.json',JSON.stringify({
+      נשמר_בתאריך:new Date().toISOString(),
+      נשמר_עי:(currentAccount&&currentAccount.username)||'',
+      קבוצה:g
+    },null,2));
+    localStorage.setItem('bkLast',new Date().toISOString());
+    if(!silent)bkStatus();
+    return true;
+  }catch(e){console.error('bkGroup',e);return false;}
+}
+async function bkAll(notify){
+  if(!_bkDir)return false;
+  if(!(await bkPerm(true))){showNotif('⚠️ אין הרשאה לתיקייה — יש לבחור אותה מחדש','warning',6000);return false;}
+  if(_bkBusy)return false;_bkBusy=true;
+  try{
+    for(var i=0;i<appData.groups.length;i++)await bkGroup(appData.groups[i],true);
+    await _bkWrite(_bkDir,'_כל-הקבוצות.json',JSON.stringify({נשמר_בתאריך:new Date().toISOString(),מספר_קבוצות:appData.groups.length,נתונים:appData},null,2));
+    var snap=await _bkDir.getDirectoryHandle('גיבוי-יומי',{create:true});
+    await _bkWrite(snap,'גיבוי-'+_bkStamp()+'.json',JSON.stringify(appData,null,2));
+    localStorage.setItem('bkLast',new Date().toISOString());
+    if(notify)showNotif('\u{1F4BE} גובו '+appData.groups.length+' קבוצות לתיקייה','success',3500);
+    bkStatus();return true;
+  }catch(e){console.error('bkAll',e);showNotif('⚠️ שגיאת גיבוי: '+e.message,'warning',6000);return false;}
+  finally{_bkBusy=false;}
+}
+function backupOnSave(g){
+  if(!_bkDir)return;
+  if(g&&g.id!=null)_bkQueue.add(g.id);else appData.groups.forEach(function(x){_bkQueue.add(x.id);});
+  clearTimeout(_bkTimer);
+  _bkTimer=setTimeout(async function(){
+    var ids=Array.from(_bkQueue);_bkQueue.clear();
+    if(!(await bkPerm(false)))return;
+    for(var i=0;i<ids.length;i++){var gg=appData.groups.find(function(x){return x.id===ids[i];});if(gg)await bkGroup(gg,true);}
+    try{await _bkWrite(_bkDir,'_כל-הקבוצות.json',JSON.stringify({נשמר_בתאריך:new Date().toISOString(),מספר_קבוצות:appData.groups.length,נתונים:appData},null,2));}catch(e){}
+    localStorage.setItem('bkLast',new Date().toISOString());bkStatus();
+  },1200);
+}
+function bkStatus(){
+  var el=document.getElementById('bkDot');if(!el)return;
+  el.style.background=_bkDir?'#5fd39b':'#c9762f';
+  el.title=_bkDir?('גיבוי מקומי פעיל — '+(localStorage.getItem('bkFolderName')||'')):'גיבוי מקומי לא מוגדר';
+}
+async function bkOpenPanel(){
+  var last=localStorage.getItem('bkLast'),fn=localStorage.getItem('bkFolderName');
+  var on=!!_bkDir, perm=on?await bkPerm(false):false;
+  var h='';
+  if(!bkSupported()){
+    h+='<div class="alert alert-warning">הדפדפן הזה לא תומך בגיבוי אוטומטי לתיקייה. יש להפעיל את המערכת בכרום או ב-Edge, או להשתמש בהורדה הידנית למטה.</div>';
+  }else if(!on){
+    h+='<div style="background:#fdf6e3;border:1.5px solid #f0d9a0;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;color:#8a6d00;">⚠️ <strong>הגיבוי המקומי אינו מוגדר.</strong><div style="margin-top:6px;">יש לבחור תיקייה במחשב — מרגע זה כל שינוי בקבוצה יישמר אליה אוטומטית, גם אם המערכת תיפול.</div></div>';
+  }else{
+    h+='<div style="background:#edf7f1;border:1.5px solid #c8efd4;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;"><strong>✅ גיבוי מקומי פעיל</strong><div style="margin-top:6px;color:var(--muted);">תיקייה: <strong>'+(fn||'—')+'</strong></div><div style="color:var(--muted);">גיבוי אחרון: <strong>'+(last?new Date(last).toLocaleString('he-IL'):'טרם בוצע')+'</strong></div>'+(perm?'':'<div style="color:#c9762f;margin-top:6px;">⚠️ ההרשאה פגה — יש ללחוץ "גבה הכול עכשיו" לחידוש</div>')+'</div>';
+  }
+  h+='<div style="font-size:12px;color:var(--muted);background:var(--sand);border-radius:8px;padding:12px;margin-bottom:14px;line-height:1.8;"><strong>מה נשמר בתיקייה:</strong><br>\u{1F4C1} <strong>קבוצות/</strong> — קובץ נפרד לכל קבוצה, מתעדכן בכל שינוי<br>\u{1F4C4} <strong>_כל-הקבוצות.json</strong> — תמונת מצב מלאה<br>\u{1F4C1} <strong>גיבוי-יומי/</strong> — עותק לכל יום, נשמר לאורך זמן</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+  if(bkSupported())h+='<button class="btn btn-primary btn-sm" onclick="bkChoose()">\u{1F4C1} '+(on?'החלפת תיקייה':'בחירת תיקיית גיבוי')+'</button>';
+  if(on)h+='<button class="btn btn-secondary btn-sm" onclick="bkAll(true)">\u{1F4BE} גבה הכול עכשיו</button>';
+  h+='<button class="btn btn-secondary btn-sm" onclick="bkDownloadNow()">⬇️ הורדה ידנית</button>';
+  if(on)h+='<button class="btn btn-danger btn-sm" onclick="bkDisconnect()">ניתוק</button>';
+  h+='</div>';
+  showGenericModal('\u{1F4BE} גיבוי מקומי',h);
+}
+function bkDownloadNow(){
+  var blob=new Blob([JSON.stringify(appData,null,2)],{type:'application/json'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='גיבוי-חוסן-'+_bkStamp()+'.json';a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+  showNotif('⬇️ הקובץ ירד לתיקיית ההורדות','success',3000);
+}
+
 function showGenericModal(title,html){var m=document.getElementById('genericModal');if(!m){m=document.createElement('div');m.className='modal-overlay';m.id='genericModal';m.innerHTML='<div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><div class="modal-title" id="genericModalTitle"></div><button onclick="document.getElementById(\'genericModal\').classList.remove(\'open\')" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);">\u2715</button></div><div id="genericModalBody"></div></div>';document.body.appendChild(m);}document.getElementById('genericModalTitle').textContent=title;document.getElementById('genericModalBody').innerHTML=html;m.classList.add('open');}
 function _waPhone(ph){var d=String(ph||'').replace(/\D/g,'');if(!d)return'';if(d.charAt(0)==='0')d='972'+d.slice(1);else if(d.indexOf('972')!==0)d='972'+d;return d;}
 function sendFeedbackLinkEmail(id){openFeedbackShareModal(id);}
