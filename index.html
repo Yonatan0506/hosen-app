@@ -505,7 +505,7 @@ const localToAdd=appData.groups.filter(lg=>{
   if(byName)return false;// קיים לפי שם + יישוב + רכזת (מניעת כפילות)
   return true;// קבוצה חדשה אמיתית
 });
-if(localToAdd.length>0){let nextId=Math.max(filteredGh.nextId||1,...ghGroups.map(g=>g.id+1),1);const added=localToAdd.map(g=>{const conflict=ghGroups.find(gg=>gg.id===g.id);return conflict?{...g,id:nextId++}:{...g};});appData={...filteredGh,groups:[...ghGroups,...added],nextId:Math.max(filteredGh.nextId||1,nextId)};await saveToGitHub();showNotif(`☁️ סונכרן + ${added.length} קבוצות הועלו`,'info',4000);}else{appData=filteredGh;if(ghData.groups.length>0)showNotif(`☁️ סונכרנו ${ghData.groups.length} קבוצות`,'info',3000);}
+if(localToAdd.length>0){let nextId=Math.max(filteredGh.nextId||1,...ghGroups.map(g=>g.id+1),1);const added=localToAdd.map(g=>{const conflict=ghGroups.find(gg=>gg.id===g.id);return conflict?{...g,id:nextId++}:{...g};});appData={...filteredGh,groups:[...ghGroups,...added],nextId:Math.max(filteredGh.nextId||1,nextId)};await saveToGitHub();showNotif(`☁️ סונכרן + ${added.length} קבוצות הועלו`,'info',4000);}else{appData=filteredGh;if(ghGroups.length>0)showNotif(`☁️ סונכרנו ${ghGroups.length} קבוצות`,'info',3000);}
 applyPendingCoordImport();mergePendingFeedbacks();saveLocal();renderGroupsList();renderDashboard();updateArchiveCount();if(document.getElementById('page-archive')&&document.getElementById('page-archive').classList.contains('active'))renderArchive();if(pendingFacilitatorData){openFacilitatorDashboard(pendingFacilitatorData.email,pendingFacilitatorData.groupId);}}catch(e){console.error(e);}}
 
 // Merge participant feedbacks stored in localStorage (submitted from participant devices)
