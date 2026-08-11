@@ -506,9 +506,6 @@ const ALLOWED_COORDINATORS=[
 const ALLOWED_EMAILS=ALLOWED_COORDINATORS.map(c=>c.email.toLowerCase()).concat(['1004692504@eduil.net']);
 const scopes=['https://graph.microsoft.com/User.Read','https://graph.microsoft.com/Mail.Send'];
 // ── GitHub — אחסון נתונים משותף לכל הרכזות ───────────────────
-const GH_TOKEN=(()=>{const c=[103,104,112,95,102,108,51,113,77,104,102,112,53,97,98,117,56,110,111,112,48,104,97,78,98,84,57,74,118,82,49,114,84,83,48,68,48,49,117,57];return c.map(x=>String.fromCharCode(x)).join('');})();
-const GH_REPO='yonatan0506/hosen-app-data';
-const GH_FILE='groups.json';
 let _ghSha=null;
 let msalInstance=null,spToken=null,currentAccount=null;
 
@@ -523,17 +520,30 @@ async function graphCall(url,method='GET',body=null){const token=await getToken(
 let _autoSyncTimer=null;
 async function initOneDrive(){try{updateSPStatus(false,null,'מחבר...');const me=await graphCall('/me');updateSPStatus(true,me.displayName||currentAccount?.name,'מחובר ✓');showNotif('✅ מחובר — '+(me.displayName||''),'success');await syncFromGitHub();if(!_autoSyncTimer)_autoSyncTimer=setInterval(()=>{if(currentAccount&&!document.getElementById('groupDetailModal').classList.contains('open'))syncFromGitHub().catch(console.error);},60000);}catch(e){updateSPStatus(false,null,'שגיאת חיבור');showNotif('⚠️ '+e.message,'danger',6000);}}
 
+const WORKER_URL='https://hosen-api.minhaltlv.workers.dev';
+async function workerCall(path,body,withAuth){
+  var headers={'Content-Type':'application/json'};
+  if(withAuth){var t=await getToken();if(!t)throw new Error('לא מחובר');headers['Authorization']='Bearer '+t;}
+  var r=await fetch(WORKER_URL+path,{method:'POST',headers:headers,body:JSON.stringify(body||{})});
+  var j=null;try{j=await r.json();}catch(e){}
+  if(!r.ok){var e2=new Error((j&&j.error)||('שגיאת שרת '+r.status));e2.status=r.status;throw e2;}
+  return j;
+}
 async function saveToOneDrive(){return saveToGitHub();}
-async function _doSaveToGitHub(){// read-modify-write
-const r0=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});let ghData={groups:[],nextId:1};if(r0.ok){const d0=await r0.json();_ghSha=d0.sha;try{ghData=JSON.parse(decodeURIComponent(escape(atob(d0.content.replace(/\n/g,'')))));}catch(e){}}const srvDel=new Set(ghData.deletedIds||[]);JSON.parse(localStorage.getItem('pendingDeletes')||'[]').forEach(function(x){srvDel.add(x);});const baseGroups=ghData.groups.filter(g=>!srvDel.has(g.id));const mergedMap=new Map();baseGroups.forEach(g=>mergedMap.set(g.id+'|'+(g.coordinatorEmail||''),g));appData.groups.forEach(g=>mergedMap.set(g.id+'|'+(g.coordinatorEmail||''),g));const mergedGroups=Array.from(mergedMap.values()).filter(g=>!srvDel.has(g.id));const merged={...ghData,groups:mergedGroups,deletedIds:Array.from(srvDel),nextId:Math.max(ghData.nextId||1,appData.nextId||1)};const content=btoa(unescape(encodeURIComponent(JSON.stringify(merged,null,2))));const body={message:'Update groups',content};if(_ghSha)body.sha=_ghSha;const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{method:'PUT',headers:{'Authorization':`token ${GH_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.status===409||r.status===422){// SHA conflict — retry once with fresh read
-throw Object.assign(new Error('CONFLICT'),{isConflict:true});}if(!r.ok){const e=await r.text();throw new Error('שגיאה בשמירה: '+r.status+' '+e);}const d=await r.json();_ghSha=d.content?.sha;try{localStorage.removeItem('pendingDeletes');}catch(e){}}
+async function _doSaveToGitHub(){
+  var pending=JSON.parse(localStorage.getItem('pendingDeletes')||'[]');
+  await workerCall('/api/save',{appData:appData,pendingDeletes:pending},true);
+  try{localStorage.removeItem('pendingDeletes');}catch(e){}
+}
 async function saveToGitHub(){try{await _doSaveToGitHub();}catch(e){if(e.isConflict){try{await _doSaveToGitHub();}catch(e2){showNotif('⚠️ שגיאה בשמירה','warning');console.error(e2);throw e2;}}else{showNotif('⚠️ שגיאה בשמירה','warning');console.error(e);throw e;}}}
 // שמירת קבוצה בודדת מהמנחה — read-modify-write כדי לא לדרוס קבוצות של רכזות אחרות
-async function _doSaveFacilitatorGroup(group){const r0=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});let ghData={groups:[],nextId:1};if(r0.ok){const d0=await r0.json();_ghSha=d0.sha;ghData=JSON.parse(decodeURIComponent(escape(atob(d0.content.replace(/\n/g,'')))));}const idx=ghData.groups.findIndex(g=>g.id===group.id);if(idx>=0){ghData.groups[idx]=group;}else{ghData.groups.push(group);if(group.id>=ghData.nextId)ghData.nextId=group.id+1;}const content=btoa(unescape(encodeURIComponent(JSON.stringify(ghData,null,2))));const body={message:'Facilitator update: '+group.name,content};if(_ghSha)body.sha=_ghSha;const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{method:'PUT',headers:{'Authorization':`token ${GH_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.status===409||r.status===422){throw Object.assign(new Error('CONFLICT'),{isConflict:true});}if(!r.ok){const e=await r.text();throw new Error('שגיאה בשמירה: '+r.status+' '+e);}const d=await r.json();_ghSha=d.content?.sha;}
+async function _doSaveFacilitatorGroup(group){
+  await workerCall('/api/facilitator',{email:(group&&group.facilitatorEmail)||facilitatorEmail||'',group:group});
+}
 async function saveFacilitatorGroupToGitHub(group){try{await _doSaveFacilitatorGroup(group);}catch(e){if(e.isConflict){try{await _doSaveFacilitatorGroup(group);}catch(e2){showNotif('⚠️ שגיאה בשמירה','warning');console.error(e2);throw e2;}}else{showNotif('⚠️ שגיאה בשמירה','warning');console.error(e);throw e;}}}
 
 async function syncFromOneDrive(){return syncFromGitHub();}
-async function syncFromGitHub(){try{if(_pendingSave){try{await _pendingSave;}catch(e){}}const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});if(r.status===404)return;if(!r.ok)throw new Error('שגיאה בטעינה: '+r.status);const d=await r.json();_ghSha=d.sha;const ghData=JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));if(!ghData||ghData.groups===undefined)return;
+async function syncFromGitHub(){try{if(_pendingSave){try{await _pendingSave;}catch(e){}}const ghData=await workerCall('/api/read',{},true);_ghSha=null;if(!ghData||ghData.groups===undefined)return;
 // מיזוג: מצא קבוצות מקומיות שאינן ב-GitHub (לפי id+coordinatorEmail)
 const srvDel=new Set(ghData.deletedIds||[]);const filteredGh={...ghData,groups:ghData.groups.filter(g=>!srvDel.has(g.id))};const ghGroups=filteredGh.groups;
 // בדיקה לפי id+רכזת וגם לפי שם+יישוב+רכזת — כדי למנוע כפילויות כשה-ID השתנה בין שמירות
@@ -594,8 +604,10 @@ function sendPaymentApprovalEmail(group,finalAmount){const amt=finalAmount||grou
 let appData={groups:[],nextId:1};
 function loadData(){const s=localStorage.getItem('hosenApp');if(s)try{appData=JSON.parse(s);}catch{}}
 function saveLocal(){localStorage.setItem('hosenApp',JSON.stringify(appData));}
-async function saveParticipantFeedbackToGitHub(groupId,fb){try{const r0=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{headers:{'Authorization':`token ${GH_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});if(!r0.ok)throw new Error('שגיאה בקריאה: '+r0.status);const d0=await r0.json();const sha=d0.sha;const ghData=JSON.parse(decodeURIComponent(escape(atob(d0.content.replace(/\n/g,'')))));const g=ghData.groups.find(x=>x.id===groupId);if(!g)throw new Error('קבוצה לא נמצאה: '+groupId);if(!g.participantFeedbacks)g.participantFeedbacks=[];g.participantFeedbacks.push(fb);if(g.status==='active')g.status='feedback';const content=btoa(unescape(encodeURIComponent(JSON.stringify(ghData,null,2))));const body={message:'Participant feedback: group '+groupId,content,sha};const r=await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`,{method:'PUT',headers:{'Authorization':`token ${GH_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const e=await r.text();throw new Error('שגיאה בשמירה: '+r.status+' '+e);}}catch(e){console.error('saveParticipantFeedbackToGitHub error:',e);throw e;}}
-let _pendingSave=null;
+async function saveParticipantFeedbackToGitHub(groupId,fb){
+  await workerCall('/api/feedback',{groupId:groupId,feedback:fb});
+}
+
 function saveData(){saveLocal();try{backupOnSave(currentFacilitatorGroup||null);}catch(e){}var p=currentFacilitatorGroup?saveFacilitatorGroupToGitHub(currentFacilitatorGroup):saveToGitHub();_pendingSave=p.catch(function(e){console.error(e);});_pendingSave.then(function(){if(_pendingSave===p||true)_pendingSave=null;});return p;}
 window.addEventListener('beforeunload',function(ev){if(_pendingSave){ev.preventDefault();ev.returnValue='\u05D4\u05E9\u05DE\u05D9\u05E8\u05D4 \u05E2\u05D3\u05D9\u05D9\u05DF \u05D1\u05EA\u05D4\u05DC\u05D9\u05DA \u2014 \u05D4\u05DE\u05EA\u05DF \u05E8\u05D2\u05E2';return ev.returnValue;}});
 try{localStorage.removeItem('deletedGroups');}catch(e){}
