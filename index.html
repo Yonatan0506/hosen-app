@@ -883,7 +883,7 @@ function updateArchiveCount(){var b=document.getElementById('archiveCount');if(b
 // מסך בקשות — כל הרכזות רואות ומשנות הכול
 // ============================================================
 function _opt(v,sel){return '<option value="'+v+'"'+(v===sel?' selected':'')+'>'+(v||'—')+'</option>';}
-function _facList(){var s=new Set();ALLOWED_FACILITATORS&&0;
+function _facList(){var s=new Set();
   var el=document.getElementById('facilitatorSelect');
   if(el)[].forEach.call(el.options,function(o){if(o.value&&o.value!=='other')s.add(o.value.split('|')[0]);});
   appData.groups.forEach(function(g){if(g.facilitatorName)s.add(g.facilitatorName);});
