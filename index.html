@@ -1024,6 +1024,74 @@ function submitRequest(ev){
 }
 
 // אישור הסדנה — הופך בקשה לקבוצה פעילה, פעם אחת בלבד
+
+let _rqEditId=null;
+function rqFillFrom(g){
+  fillRequestForm();
+  var set=function(id,v){var el=document.getElementById(id);if(el)el.value=(v==null?'':v);};
+  set('rqName',g.name); set('rqVillage',g.village);
+  set('rqAudience',(g.audience||[])[0]||'');
+  set('rqCoord',g.coordinatorName); set('rqContact',g.contactName);
+  set('rqYear',g.year); set('rqDate',g.requestDate);
+  set('rqSessions',g.sessionCount); set('rqCost',g.costPerSession);
+  set('rqDetails',g.details);
+  var f=document.getElementById('rqFac');
+  if(f){
+    var found=false;
+    [].forEach.call(f.options,function(o){if(o.value===g.facilitatorName)found=true;});
+    if(!found&&g.facilitatorName){f.value='other';rqFacOther();var t=document.getElementById('rqFacOther');if(t)t.value=g.facilitatorName;}
+    else{f.value=g.facilitatorName||'';rqFacOther();}
+  }
+  rqCalc();
+}
+function rqEdit(id){
+  var g=appData.groups.find(function(x){return x.id===id;});if(!g)return;
+  _rqEditId=id; rqFillFrom(g);
+  var t=document.getElementById('rqFormTitle');if(t)t.textContent='עריכת בקשה — '+g.name;
+  var b=document.getElementById('rqSubmitBtn');if(b)b.textContent='✅ אישור';
+  var cn=document.getElementById('rqCancelBtn');if(cn)cn.style.display='inline-flex';
+  var p=document.getElementById('page-requests');if(p)p.scrollIntoView({behavior:'smooth',block:'start'});
+  showNotif('✏️ עריכת "'+g.name+'"','info',3000);
+}
+function rqDuplicate(id){
+  var g=appData.groups.find(function(x){return x.id===id;});if(!g)return;
+  _rqEditId=null; rqFillFrom(g);
+  var t=document.getElementById('rqFormTitle');if(t)t.textContent='שכפול בקשה — שנה מה שצריך ושמור';
+  var b=document.getElementById('rqSubmitBtn');if(b)b.textContent='\u{1F4CB} פתיחת בקשה חדשה';
+  var cn=document.getElementById('rqCancelBtn');if(cn)cn.style.display='inline-flex';
+  var p=document.getElementById('page-requests');if(p)p.scrollIntoView({behavior:'smooth',block:'start'});
+  showNotif('\u{1F4C4} שוכפל מ-"'+g.name+'" — שנה ושמור','info',4000);
+}
+function rqCancelEdit(){
+  _rqEditId=null;
+  var f=document.getElementById('reqForm');if(f)f.reset();
+  fillRequestForm();rqFacOther();rqCalc();
+  var t=document.getElementById('rqFormTitle');if(t)t.textContent='בקשה חדשה לסדנה';
+  var b=document.getElementById('rqSubmitBtn');if(b)b.textContent='\u{1F4CB} פתיחת בקשה (ממתין להזמנה)';
+  var cn=document.getElementById('rqCancelBtn');if(cn)cn.style.display='none';
+}
+function rqDelete(id){
+  var g=appData.groups.find(function(x){return x.id===id;});if(!g)return;
+  var np=(g.participants||[]).length, ns=(g.sessions||[]).filter(function(s){return s&&!s.missed;}).length;
+  var warn=(np||ns)?('\n\n⚠️ יש בה '+np+' משתתפים ו-'+ns+' מפגשים שהוזנו.'):'';
+  if(!confirm('למחוק לצמיתות את "'+g.name+'" ('+g.village+')?'+warn+'\n\nלא ניתן לשחזר.'))return;
+  appData.groups=appData.groups.filter(function(x){return x.id!==id;});
+  var dl=JSON.parse(localStorage.getItem('pendingDeletes')||'[]');dl.push(id);
+  localStorage.setItem('pendingDeletes',JSON.stringify(dl));
+  saveData();renderRequests();renderGroupsList();renderDashboard();updateArchiveCount();updateRequestCount();
+  showNotif('\u{1F5D1}️ "'+g.name+'" נמחקה','warning',4000);
+}
+function rqRevertToRequest(id){
+  var g=appData.groups.find(function(x){return x.id===id;});if(!g)return;
+  var np=(g.participants||[]).length, ns=(g.sessions||[]).filter(function(x){return x&&!x.missed;}).length;
+  var warn=(np||ns)?('\n\nהנתונים נשמרים: '+np+' משתתפים, '+ns+' מפגשים. הקבוצה רק תרד מרשימת הרכזת.'):'';
+  if(!confirm('להחזיר את "'+g.name+'" למצב בקשה?'+warn))return;
+  g.stage='request';
+  g.wfHistory=(g.wfHistory||[]).concat([{from:'קבוצה',to:'בקשה',at:new Date().toISOString(),by:(currentAccount&&currentAccount.username)||''}]);
+  saveData();renderRequests();renderGroupsList();renderDashboard();updateArchiveCount();updateRequestCount();
+  showNotif('↩️ "'+g.name+'" הוחזרה לבקשות','success',4500);
+}
+
 function approveRequest(id){
   var g=appData.groups.find(function(x){return x.id===id;});if(!g)return;
   if(g.stage==='group'){showNotif('ℹ️ הקבוצה כבר פתוחה במערכת','info',4000);return;}
